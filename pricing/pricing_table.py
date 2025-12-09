@@ -7,18 +7,23 @@ class ApostaPreco:
 
 # Valores de exemplo; confira com a tabela oficial mais recente.
 TABELA_PRECOS = {
-    6: 5.00,
-    7: 35.00,
-    8: 140.00,
-    9: 420.00,
-    10: 1050.00,
-    11: 2310.00,
-    12: 4620.00,
-    13: 8580.00,
-    14: 15015.00,
-    15: 22522.50,
-    # se quiser, continue até 20
+    6: 6.00,
+    7: 42.00,
+    8: 168.00,
+    9: 504.00,
+    10: 1260.00,
+    11: 2772.00,
+    12: 5544.00,
+    13: 10296.00,
+    14: 18018.00,
+    15: 30030.00,
+    16: 48048.00,
+    17: 72072.00,
+    18: 108108.00,
+    19: 162162.00,
+    20: 216216.00,
 }
+
 
 def preco_por_jogo(dezenas_por_jogo: int) -> float:
     if dezenas_por_jogo not in TABELA_PRECOS:
