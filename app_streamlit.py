@@ -32,7 +32,6 @@ def tem_colunas_basicas(df: pd.DataFrame) -> bool:
     col_dezenas = [c for c in df.columns if c.lower().startswith("dezena")]
     return len(col_dezenas) >= 6
 
-
 # --------------------------------------------------------------------------------------
 # Páginas
 # --------------------------------------------------------------------------------------
@@ -47,8 +46,8 @@ def pagina_historico(df: pd.DataFrame):
         )
         return
 
-    col_concurso = "concurso"
-    col_data = "data"
+    col_concurso = "Concurso"
+    col_data = "Data Sorteio"
 
     if col_concurso in df.columns:
         total_concursos = df[col_concurso].nunique()
@@ -58,7 +57,7 @@ def pagina_historico(df: pd.DataFrame):
 
     if col_data in df.columns:
         try:
-            df[col_data] = pd.to_datetime(df[col_data], errors="coerce")
+            df[col_data] = pd.to_datetime(df[col_data], errors="coerce", dayfirst=True)
             ultima_data = df[col_data].max()
             if pd.notna(ultima_data):
                 st.write(f"Último concurso em: **{ultima_data.date()}**")
@@ -66,7 +65,7 @@ def pagina_historico(df: pd.DataFrame):
             pass
 
     st.subheader("Últimos concursos")
-    st.dataframe(df.tail(20), use_container_width=True)
+    st.dataframe(df.tail(20), width="stretch")
 
 
 def pagina_analises(df: pd.DataFrame):
@@ -84,17 +83,17 @@ def pagina_analises(df: pd.DataFrame):
 
     with col1:
         st.subheader("Frequência das dezenas")
-        st.dataframe(freq_df, use_container_width=True)
+        st.dataframe(freq_df, width="stretch")
         chart_data = freq_df.set_index("numero")["frequencia"]
         st.bar_chart(chart_data)
 
     with col2:
         st.subheader("Atraso das dezenas")
-        st.dataframe(atraso_df, use_container_width=True)
+        st.dataframe(atraso_df, width="stretch")
 
     st.subheader("Distribuição de pares x ímpares")
     if pares_df is not None and not pares_df.empty:
-        st.dataframe(pares_df, use_container_width=True)
+        st.dataframe(pares_df, width="stretch")
     else:
         st.info("Não foi possível calcular pares x ímpares para o histórico atual.")
 
@@ -142,7 +141,7 @@ def pagina_gerar_jogos():
         return
 
     st.subheader("Jogos gerados")
-    st.dataframe(df_jogos, use_container_width=True)
+    st.dataframe(df_jogos, width="stretch")
 
     try:
         preco = preco_por_jogo(int(dezenas_por_jogo))
@@ -184,57 +183,4 @@ def pagina_simulacao():
         if p > 0:
             st.success(
                 f"Probabilidade de acertar a **Sena** com "
-                f"{dezenas_por_jogo} dezenas em um único jogo:\n\n"
-                f"- Valor aproximado: **{p:.12f}**\n"
-                f"- Aproximadamente **1 em {1/p:,.0f}** combinações."
-            )
-        else:
-            st.warning("Probabilidade retornou 0. Verifique a função prob_sena.")
-    except Exception as e:
-        st.error(f"Erro ao calcular probabilidade: {e}")
-
-
-# --------------------------------------------------------------------------------------
-# Função principal
-# --------------------------------------------------------------------------------------
-def main():
-    st.sidebar.title("Mega-Sena App")
-
-    pagina = st.sidebar.radio(
-        "Navegação",
-        ["Histórico", "Análises", "Gerar jogos", "Simulação"],
-        index=0,
-    )
-
-    try:
-        df = load_data()
-    except FileNotFoundError as e:
-        st.error(
-            "Arquivo de histórico não encontrado.\n\n"
-            "Confira se `data/mega_sena.csv` está presente no repositório.\n\n"
-            f"Detalhes: {e}"
-        )
-        df = pd.DataFrame()
-    except Exception as e:
-        st.error(f"Erro ao carregar dados: {e}")
-        df = pd.DataFrame()
-
-    if pagina == "Histórico":
-        pagina_historico(df)
-    elif pagina == "Análises":
-        pagina_analises(df)
-    elif pagina == "Gerar jogos":
-        pagina_gerar_jogos()
-    elif pagina == "Simulação":
-        pagina_simulacao()
-
-    st.markdown("---")
-    st.caption(
-        "App de estudo e entretenimento sobre Mega-Sena. "
-        "Probabilidades e custos são aproximações; "
-        "consulte sempre as regras e valores oficiais."
-    )
-
-
-if __name__ == "__main__":
-    main()
+                f"{dezenas_por_jogo} dezenas em um único jogo:\n
