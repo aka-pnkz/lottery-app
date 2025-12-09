@@ -1,5 +1,6 @@
 from pathlib import Path
 import pandas as pd
+from pandas.errors import EmptyDataError
 
 DATA_DIR = Path("data")
 CSV_PATH = DATA_DIR / "mega_sena.csv"
@@ -9,10 +10,17 @@ def ensure_data_dir() -> None:
 
 def load_results() -> pd.DataFrame:
     """
-    Carrega o CSV histórico.
+    Carrega o CSV histórico. Se estiver vazio, volta um DataFrame vazio
+    com colunas padrão, para o app continuar rodando.
     """
     ensure_data_dir()
     if not CSV_PATH.exists():
-        raise FileNotFoundError(f"Arquivo {CSV_PATH} não encontrado.")
-    df = pd.read_csv(CSV_PATH)
+        raise FileNotFoundError(f"Arquivo {CSV_PATH} não encontrado no repositório.")
+
+    try:
+        df = pd.read_csv(CSV_PATH)
+    except EmptyDataError:
+        # CSV existe mas está vazio
+        df = pd.DataFrame(columns=["concurso", "data", "dezena1", "dezena2",
+                                   "dezena3", "dezena4", "dezena5", "dezena6"])
     return df
