@@ -2,7 +2,11 @@ import streamlit as st
 import pandas as pd
 
 from utils.storage import load_results
-from analysis.frequency import analyze_frequency, analyze_delay
+from analysis.frequency import (
+    analyze_frequency,
+    analyze_delay,
+    analyze_par_impar,
+)
 from analysis.generator import gerar_jogos
 from analysis.probability import prob_sena
 from pricing.pricing_table import preco_por_jogo, custo_total
@@ -17,8 +21,15 @@ st.set_page_config(
 # Carregamento de dados (com cache)
 # --------------------------------------------------------------------------------------
 @st.cache_data
-def load_data():
+def load_data() -> pd.DataFrame:
     return load_results()
+
+# --------------------------------------------------------------------------------------
+# Funções auxiliares
+# --------------------------------------------------------------------------------------
+def tem_colunas_basicas(df: pd.DataFrame) -> bool:
+    col_dezenas = [c for c in df.columns if c.lower().startswith("dezena")]
+    return len(col_dezenas) >= 6
 
 # --------------------------------------------------------------------------------------
 # Páginas
@@ -34,7 +45,6 @@ def pagina_historico(df: pd.DataFrame):
         )
         return
 
-    # Tenta inferir colunas padrão (ajuste se seu CSV tiver nomes diferentes)
     col_concurso = "concurso"
     col_data = "data"
 
@@ -60,19 +70,19 @@ def pagina_historico(df: pd.DataFrame):
 def pagina_analises(df: pd.DataFrame):
     st.header("Análises e estatísticas")
 
-    if df.empty:
-        st.warning("Sem dados no histórico para analisar.")
+    if df.empty or not tem_colunas_basicas(df):
+        st.warning("Histórico indisponível ou incompleto para análises.")
         return
 
     freq_df = analyze_frequency(df)
     atraso_df = analyze_delay(df)
+    pares_df = analyze_par_impar(df)
 
     col1, col2 = st.columns(2)
 
     with col1:
         st.subheader("Frequência das dezenas")
         st.dataframe(freq_df, use_container_width=True)
-        # Gráfico simples de barras
         chart_data = freq_df.set_index("numero")["frequencia"]
         st.bar_chart(chart_data)
 
@@ -80,11 +90,17 @@ def pagina_analises(df: pd.DataFrame):
         st.subheader("Atraso das dezenas")
         st.dataframe(atraso_df, use_container_width=True)
 
+    st.subheader("Distribuição de pares x ímpares")
+    if pares_df is not None and not pares_df.empty:
+        st.dataframe(pares_df, use_container_width=True)
+    else:
+        st.info("Não foi possível calcular pares x ímpares para o histórico atual.")
+
 
 def pagina_gerar_jogos():
     st.header("Gerar jogos")
 
-    with st.expander("Configurações da aposta", expanded=True):
+    with st.form("form_gerar_jogos"):
         qtd_jogos = st.number_input(
             "Quantidade de jogos",
             min_value=1,
@@ -104,67 +120,76 @@ def pagina_gerar_jogos():
             ["aleatorio_puro"],
             index=0,
         )
+        submitted = st.form_submit_button("Gerar jogos")
 
-    if st.button("Gerar jogos", type="primary"):
-        try:
-            df_jogos = gerar_jogos(
-                int(qtd_jogos),
-                int(dezenas_por_jogo),
-                estrategia,
-            )
-        except Exception as e:
-            st.error(f"Erro ao gerar jogos: {e}")
-            return
+    if not submitted:
+        return
 
-        st.subheader("Jogos gerados")
-        st.dataframe(df_jogos, use_container_width=True)
+    if qtd_jogos <= 0:
+        st.error("A quantidade de jogos deve ser maior que zero.")
+        return
 
-        # Custo estimado
-        try:
-            preco = preco_por_jogo(int(dezenas_por_jogo))
-            total = custo_total(int(qtd_jogos), int(dezenas_por_jogo))
-            st.info(
-                f"Preço por jogo: **R$ {preco:,.2f}**  |  "
-                f"Custo total: **R$ {total:,.2f}**"
-            )
-        except Exception as e:
-            st.warning(f"Não foi possível calcular o custo: {e}")
-
-        # Download CSV
-        csv = df_jogos.to_csv(index=False).encode("utf-8")
-        st.download_button(
-            label="Baixar jogos em CSV",
-            data=csv,
-            file_name="jogos_mega_sena.csv",
-            mime="text/csv",
+    try:
+        df_jogos = gerar_jogos(
+            int(qtd_jogos),
+            int(dezenas_por_jogo),
+            estrategia,
         )
+    except Exception as e:
+        st.error(f"Erro ao gerar jogos: {e}")
+        return
+
+    st.subheader("Jogos gerados")
+    st.dataframe(df_jogos, use_container_width=True)
+
+    try:
+        preco = preco_por_jogo(int(dezenas_por_jogo))
+        total = custo_total(int(qtd_jogos), int(dezenas_por_jogo))
+        st.info(
+            f"Preço por jogo: **R$ {preco:,.2f}**  |  "
+            f"Custo total: **R$ {total:,.2f}**"
+        )
+    except Exception as e:
+        st.warning(f"Não foi possível calcular o custo: {e}")
+
+    csv = df_jogos.to_csv(index=False).encode("utf-8")
+    st.download_button(
+        label="Baixar jogos em CSV",
+        data=csv,
+        file_name="jogos_mega_sena.csv",
+        mime="text/csv",
+    )
 
 
 def pagina_simulacao():
     st.header("Simulação de probabilidades")
 
-    dezenas_por_jogo = st.number_input(
-        "Dezenas por jogo",
-        min_value=6,
-        max_value=20,
-        value=6,
-        step=1,
-    )
+    with st.form("form_simulacao"):
+        dezenas_por_jogo = st.number_input(
+            "Dezenas por jogo",
+            min_value=6,
+            max_value=20,
+            value=6,
+            step=1,
+        )
+        submitted = st.form_submit_button("Calcular probabilidade de Sena")
 
-    if st.button("Calcular probabilidade de Sena"):
-        try:
-            p = prob_sena(int(dezenas_por_jogo))
-            if p > 0:
-                st.success(
-                    f"Probabilidade de acertar a **Sena** com "
-                    f"{dezenas_por_jogo} dezenas em um único jogo:\n\n"
-                    f"- Valor aproximado: **{p:.12f}**\n"
-                    f"- Aproximadamente **1 em {1/p:,.0f}** combinações."
-                )
-            else:
-                st.warning("Probabilidade retornou 0. Verifique a função prob_sena.")
-        except Exception as e:
-            st.error(f"Erro ao calcular probabilidade: {e}")
+    if not submitted:
+        return
+
+    try:
+        p = prob_sena(int(dezenas_por_jogo))
+        if p > 0:
+            st.success(
+                f"Probabilidade de acertar a **Sena** com "
+                f"{dezenas_por_jogo} dezenas em um único jogo:\n\n"
+                f"- Valor aproximado: **{p:.12f}**\n"
+                f"- Aproximadamente **1 em {1/p:,.0f}** combinações."
+            )
+        else:
+            st.warning("Probabilidade retornou 0. Verifique a função prob_sena.")
+    except Exception as e:
+        st.error(f"Erro ao calcular probabilidade: {e}")
 
 
 # --------------------------------------------------------------------------------------
@@ -179,7 +204,6 @@ def main():
         index=0,
     )
 
-    # Carrega histórico (pode estar vazio, mas não deve quebrar o app)
     try:
         df = load_data()
     except FileNotFoundError as e:

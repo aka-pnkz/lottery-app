@@ -10,8 +10,8 @@ def ensure_data_dir() -> None:
 
 def load_results() -> pd.DataFrame:
     """
-    Carrega o CSV histórico. Se estiver vazio, volta um DataFrame vazio
-    com colunas padrão, para o app continuar rodando.
+    Carrega o CSV histórico. Se estiver vazio, devolve DataFrame vazio
+    com colunas padrão.
     """
     ensure_data_dir()
     if not CSV_PATH.exists():
@@ -20,7 +20,8 @@ def load_results() -> pd.DataFrame:
     try:
         df = pd.read_csv(CSV_PATH)
     except EmptyDataError:
-        # CSV existe mas está vazio
-        df = pd.DataFrame(columns=["concurso", "data", "dezena1", "dezena2",
-                                   "dezena3", "dezena4", "dezena5", "dezena6"])
+        df = pd.DataFrame(
+            columns=["concurso", "data", "dezena1", "dezena2",
+                     "dezena3", "dezena4", "dezena5", "dezena6"]
+        )
     return df

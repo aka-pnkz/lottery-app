@@ -5,7 +5,7 @@ class ApostaPreco:
     dezenas: int
     preco: float
 
-# Tabela de exemplo: ajuste se necessário conforme a tabela oficial mais recente
+# Valores de exemplo; confira com a tabela oficial mais recente.
 TABELA_PRECOS = {
     6: 5.00,
     7: 35.00,
@@ -17,7 +17,7 @@ TABELA_PRECOS = {
     13: 8580.00,
     14: 15015.00,
     15: 22522.50,
-    # se quiser, continue até 20 com valores atualizados
+    # se quiser, continue até 20
 }
 
 def preco_por_jogo(dezenas_por_jogo: int) -> float:
