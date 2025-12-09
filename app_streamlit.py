@@ -146,9 +146,12 @@ def pagina_gerar_jogos():
     try:
         preco = preco_por_jogo(int(dezenas_por_jogo))
         total = custo_total(int(qtd_jogos), int(dezenas_por_jogo))
-        st.info(
+        msg_preco = (
             f"Preço por jogo: **R$ {preco:,.2f}**  |  "
             f"Custo total: **R$ {total:,.2f}**"
         )
+        st.info(msg_preco)
     except Exception as e:
-        st.warning(f"Não foi possível calcular o custo
+        msg_erro = f"Não foi possível calcular o custo: {e}"
+        st.warning(msg_erro)
+
