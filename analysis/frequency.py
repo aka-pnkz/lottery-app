@@ -1,7 +1,24 @@
 import pandas as pd
 
 def _dezena_cols(df: pd.DataFrame) -> list[str]:
-    return [c for c in df.columns if c.lower().startswith("dezena")]
+    """
+    Detecta colunas de dezenas no CSV.
+    Ajuste os padrões conforme o cabeçalho real do seu mega_sena.csv.
+    """
+    cols = [c for c in df.columns if c.lower().startswith("dezena")]
+
+    # Se o seu CSV usa outro formato, acrescente aqui:
+    if not cols:
+        # exemplos comuns: 'bola1'..'bola6', 'd1'..'d6'
+        candidatos = []
+        for c in df.columns:
+            cl = c.lower()
+            if cl.startswith("bola") or cl.startswith("d") and cl[1:].isdigit():
+                candidatos.append(c)
+        cols = candidatos
+
+    return cols
+
 
 def analyze_frequency(df: pd.DataFrame) -> pd.DataFrame:
     """
