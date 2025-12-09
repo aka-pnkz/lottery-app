@@ -181,6 +181,14 @@ def pagina_simulacao():
     try:
         p = prob_sena(int(dezenas_por_jogo))
         if p > 0:
-            st.success(
+            msg = (
                 f"Probabilidade de acertar a **Sena** com "
-                f"{dezenas_por_jogo} dezenas em um único jogo:\n
+                f"{dezenas_por_jogo} dezenas em um único jogo:\n\n"
+                f"- Valor aproximado: **{p:.12f}**\n"
+                f"- Aproximadamente **1 em {1/p:,.0f}** combinações."
+            )
+            st.success(msg)
+        else:
+            st.warning("Probabilidade retornou 0. Verifique a função prob_sena.")
+    except Exception as e:
+        st.error(f"Erro ao calcular probabilidade: {e}")
