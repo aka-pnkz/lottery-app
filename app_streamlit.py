@@ -192,3 +192,6 @@ def pagina_simulacao():
             st.warning("Probabilidade retornou 0. Verifique a função prob_sena.")
     except Exception as e:
         st.error(f"Erro ao calcular probabilidade: {e}")
+        
+if __name__ == "__main__":
+    main()
