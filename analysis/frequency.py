@@ -1,11 +1,8 @@
 import pandas as pd
 
 def _dezena_cols(df: pd.DataFrame) -> list[str]:
-    """
-    Detecta colunas de dezenas no CSV.
-    Ajuste os padrões conforme o cabeçalho real do seu mega_sena.csv.
-    """
-    cols = [c for c in df.columns if c.lower().startswith("dezena")]
+    return [c for c in df.columns if c.lower().startswith("dezena")]
+
 
     # Se o seu CSV usa outro formato, acrescente aqui:
     if not cols:

@@ -28,8 +28,10 @@ def load_data() -> pd.DataFrame:
 # Funções auxiliares
 # --------------------------------------------------------------------------------------
 def tem_colunas_basicas(df: pd.DataFrame) -> bool:
+    # aceita "Dezena1"..."Dezena6"
     col_dezenas = [c for c in df.columns if c.lower().startswith("dezena")]
     return len(col_dezenas) >= 6
+
 
 # --------------------------------------------------------------------------------------
 # Páginas
