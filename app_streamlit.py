@@ -387,9 +387,9 @@ def pagina_analises(df_concursos: pd.DataFrame, freq_df: pd.DataFrame) -> None:
         col1, col2 = st.columns(2)
 
         with col1:
-            st.markdown("#### Ordenado por frequência")
+            st.markdown("#### Frequência das dezenas")
             st.dataframe(
-                atraso_df.sort_values("frequencia", ascending=False).reset_index(drop=True),
+                freq_df.sort_values("frequencia", ascending=False).reset_index(drop=True),
                 width="stretch",
                 height=400,
                 hide_index=True,
@@ -571,7 +571,6 @@ with st.sidebar:
                 key="qtd_base_wheeling",
             )
 
-            # estado interno separado do widget
             if "base_wheeling_value" not in st.session_state:
                 st.session_state.base_wheeling_value = "1,3,5,7,9,11,13,15,17,19"
 
@@ -591,7 +590,6 @@ with st.sidebar:
                 ),
             )
 
-            # só atualiza com digitação quando estiver em modo Manual
             if modo_base == "Manual":
                 st.session_state.base_wheeling_value = base_str
         else:
@@ -601,11 +599,6 @@ with st.sidebar:
             )
 
         st.markdown("---")
-        mostrar_frequencias = st.checkbox(
-            "Mostrar tabela de frequências",
-            value=True,
-        )
-
         gerar = st.button("Gerar jogos agora", type="primary")
 
     else:
@@ -613,7 +606,6 @@ with st.sidebar:
         qtd_jogos = tam_jogo = limite_seq = 0
         q_quentes = q_frias = q_neutras = 0
         base_str = ""
-        mostrar_frequencias = False
         gerar = False
 
 
@@ -713,15 +705,6 @@ try:
                 f"Total de concursos: **{len(df_concursos)}** "
                 f"(de {df_concursos['data'].min().date()} até {df_concursos['data'].max().date()})"
             )
-
-            if mostrar_frequencias:
-                st.subheader("Frequência das dezenas")
-                st.dataframe(
-                    freq_df,
-                    width="stretch",
-                    height=400,
-                    hide_index=True,
-                )
 
         with col2:
             st.subheader("Parâmetros selecionados")
