@@ -150,13 +150,8 @@ try:
 
         if mostrar_frequencias:
             st.subheader("Frequência das dezenas")
-            st.dataframe(
-                freq_df.style.background_gradient(
-                    subset=["frequencia"], cmap="Blues"
-                ),
-                use_container_width=True,
-                height=400,
-            )
+            # Sem background_gradient para não exigir matplotlib
+            st.dataframe(freq_df, use_container_width=True, height=400)
 
     with col2:
         st.subheader("Parâmetros selecionados")
