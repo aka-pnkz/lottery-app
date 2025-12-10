@@ -762,20 +762,24 @@ try:
                 if not jogos:
                     st.warning("Nenhum jogo gerado. Verifique os parâmetros.")
                 else:
-                    for i, jogo in enumerate(jogos, start=1):
-                        st.code(f"Jogo {i:02d}: {formatar_jogo(jogo)}")
+                    # Centraliza a lista de jogos em um grid 1-2-1
+                    col_left, col_center, col_right = st.columns([1, 2, 1])
 
-                    jogos_df = pd.DataFrame(
-                        jogos,
-                        columns=[f"d{i}" for i in range(1, len(jogos[0]) + 1)],
-                    )
-                    csv_data = jogos_df.to_csv(index=False, sep=";").encode("utf-8")
-                    st.download_button(
-                        label="Baixar jogos em CSV",
-                        data=csv_data,
-                        file_name=f"jogos_megasena_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-                        mime="text/csv",
-                    )
+                    with col_center:
+                        for i, jogo in enumerate(jogos, start=1):
+                            st.code(f"Jogo {i:02d}: {formatar_jogo(jogo)}")
+
+                        jogos_df = pd.DataFrame(
+                            jogos,
+                            columns=[f"d{i}" for i in range(1, len(jogos[0]) + 1)],
+                        )
+                        csv_data = jogos_df.to_csv(index=False, sep=";").encode("utf-8")
+                        st.download_button(
+                            label="Baixar jogos em CSV",
+                            data=csv_data,
+                            file_name=f"jogos_megasena_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                            mime="text/csv",
+                        )
 
     else:
         pagina_analises(df_concursos, freq_df)
