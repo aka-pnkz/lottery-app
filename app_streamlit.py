@@ -3,9 +3,11 @@ import pandas as pd
 
 # IMPORTS DO SEU PROJETO
 from analysis.frequency import analyze_frequency, analyze_delay, analyze_par_impar
-from data.loader import load_data  # ajuste para o módulo correto
-from core.jogos import gerar_jogos  # ajuste para o módulo correto
-from core.custos import preco_por_jogo, custo_total  # ajuste para o módulo correto
+from utils.data import load_data              # use o módulo onde HOJE está o load_data
+from utils.jogos import gerar_jogos          # módulo onde HOJE está gerar_jogos
+from utils.custos import preco_por_jogo, custo_total  # onde HOJE estão essas funções
+
+
 
 
 # ---------------- PAGINA: GERAR JOGOS ----------------
