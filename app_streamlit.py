@@ -386,6 +386,7 @@ def pagina_analises(df_concursos: pd.DataFrame, freq_df: pd.DataFrame) -> None:
                 atraso_df.sort_values("frequencia", ascending=False).reset_index(drop=True),
                 use_container_width=True,
                 height=400,
+                hide_index=True,
             )
 
         with col2:
@@ -396,6 +397,7 @@ def pagina_analises(df_concursos: pd.DataFrame, freq_df: pd.DataFrame) -> None:
                 ).reset_index(drop=True),
                 use_container_width=True,
                 height=400,
+                hide_index=True,
             )
 
     with tab_padroes:
@@ -411,13 +413,17 @@ def pagina_analises(df_concursos: pd.DataFrame, freq_df: pd.DataFrame) -> None:
         )
 
         st.markdown("#### Padrões mais comuns de pares/ímpares")
-        st.dataframe(dist_par_impar, use_container_width=True)
+        st.dataframe(dist_par_impar, use_container_width=True, hide_index=True)
 
         st.markdown("#### Padrões mais comuns de baixa/alta")
-        st.dataframe(dist_baixa_alta, use_container_width=True)
+        st.dataframe(dist_baixa_alta, use_container_width=True, hide_index=True)
 
         with st.expander("Ver tabela detalhada por concurso"):
-            st.dataframe(df_padroes.sort_values("concurso"), use_container_width=True)
+            st.dataframe(
+                df_padroes.sort_values("concurso"),
+                use_container_width=True,
+                hide_index=True,
+            )
 
     with tab_somas:
         st.subheader("Soma das dezenas por concurso")
@@ -437,6 +443,7 @@ def pagina_analises(df_concursos: pd.DataFrame, freq_df: pd.DataFrame) -> None:
                 df_somas.sort_values("concurso").reset_index(drop=True),
                 use_container_width=True,
                 height=400,
+                hide_index=True,
             )
 
         with col2:
@@ -445,6 +452,7 @@ def pagina_analises(df_concursos: pd.DataFrame, freq_df: pd.DataFrame) -> None:
                 dist_faixas,
                 use_container_width=True,
                 height=400,
+                hide_index=True,
             )
 
     with tab_pares_trios:
@@ -469,11 +477,11 @@ def pagina_analises(df_concursos: pd.DataFrame, freq_df: pd.DataFrame) -> None:
 
         with col1:
             st.markdown("#### Pares mais frequentes")
-            st.dataframe(df_pares, use_container_width=True, height=400)
+            st.dataframe(df_pares, use_container_width=True, height=400, hide_index=True)
 
         with col2:
             st.markdown("#### Trios mais frequentes")
-            st.dataframe(df_trios, use_container_width=True, height=400)
+            st.dataframe(df_trios, use_container_width=True, height=400, hide_index=True)
 
 
 # ==========================
@@ -610,7 +618,7 @@ try:
 
             if mostrar_frequencias:
                 st.subheader("Frequência das dezenas")
-                st.dataframe(freq_df, use_container_width=True, height=400)
+                st.dataframe(freq_df, use_container_width=True, height=400, hide_index=True)
 
         with col2:
             st.subheader("Parâmetros selecionados")
