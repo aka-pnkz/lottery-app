@@ -583,14 +583,17 @@ with st.sidebar:
                 "Base de dezenas",
                 key="base_wheeling",
                 value=st.session_state.base_wheeling_value,
+                disabled=(modo_base != "Manual"),
                 help=(
-                    "Informe de 6 a ~20 dezenas separadas por vírgula, por exemplo: "
-                    "1,3,5,7,9,11,13,15,17,19. "
-                    "Ou use o botão 'Gerar base sugerida' para preencher automaticamente."
+                    "No modo Manual, informe de 6 a ~20 dezenas separadas por vírgula, "
+                    "por exemplo: 1,3,5,7,9,11,13,15,17,19. "
+                    "Nos outros modos, a base é preenchida automaticamente pelas análises."
                 ),
             )
-            # sincroniza o que o usuário digitar com o estado interno
-            st.session_state.base_wheeling_value = base_str
+
+            # só atualiza com digitação quando estiver em modo Manual
+            if modo_base == "Manual":
+                st.session_state.base_wheeling_value = base_str
         else:
             base_str = st.session_state.get(
                 "base_wheeling_value",
