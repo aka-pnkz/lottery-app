@@ -135,6 +135,16 @@ def pagina_gerar_jogos():
     except Exception:
         freq_df = None
 
+    estrategias_disponiveis = [
+        "aleatorio_puro",
+        "balanceado_par_impar",
+        "faixas",
+        "sem_sequencias",
+        "hot",
+        "cold",
+        "hot_cold_misto",
+    ]
+
     with st.form("form_gerar_jogos"):
         qtd_jogos = st.number_input(
             "Quantidade de jogos",
@@ -152,47 +162,27 @@ def pagina_gerar_jogos():
         )
         estrategia = st.selectbox(
             "Estratégia",
-            [
-                "aleatorio_puro",
-                "balanceado_par_impar",
-                "faixas",
-                "sem_sequencias",
-                "hot",
-                "cold",
-                "hot_cold_misto",
-            ],
+            estrategias_disponiveis,
             index=0,
+        )
+        gerar_todas = st.checkbox(
+            "Gerar 1 jogo para cada estratégia acima",
+            value=False,
         )
 
         with st.expander("Entenda as estratégias"):
             st.markdown(
                 """
 **Importante:** todas as combinações têm a mesma probabilidade matemática.
-As estratégias abaixo só organizam os números de formas diferentes, para deixar o jogo mais **estruturado** e evitar padrões ruins, mas **não garantem prêmio**. [web:267][web:271]
+As estratégias abaixo só organizam os números de formas diferentes, não garantem prêmio. [web:267][web:271]
 
-- **aleatorio_puro**  
-  Gera dezenas totalmente aleatórias entre 1 e 60, sem nenhuma regra extra.
-  É o jeito mais simples e alinhado com a ideia de que cada combinação tem a mesma chance. [web:295][web:293]
-
-- **balanceado_par_impar**  
-  Monta jogos tentando manter um equilíbrio entre pares e ímpares (por exemplo 3 pares e 3 ímpares quando são 6 dezenas), porque historicamente distribuições muito extremas (tudo par ou tudo ímpar) são raras. [web:263][web:305]
-
-- **faixas**  
-  Espalha as dezenas pelas faixas 1–20, 21–40 e 41–60, para evitar concentrar tudo em uma parte do volante e cobrir melhor o intervalo completo de números. [web:266][web:260]
-
-- **sem_sequencias**  
-  Evita jogos com sequências longas de dezenas consecutivas (como 10–11–12–13), que quase não aparecem nos sorteios e são padrão que muitos jogadores escolhem sem perceber. [web:266][web:275]
-
-- **hot**  
-  Dá mais peso às dezenas que mais apareceram no histórico (“números quentes”).  
-  É uma forma popular de apostar usando frequência passada, embora isso não mude a probabilidade futura em um sorteio realmente aleatório. [web:263][web:259][web:276]
-
-- **cold**  
-  Prioriza dezenas que saíram pouco ou estão há muito tempo sem aparecer (“números frios”), na ideia de que podem estar “atrasadas”.  
-  É uma escolha de preferência do jogador, não uma vantagem garantida. [web:259][web:288]
-
-- **hot_cold_misto**  
-  Mistura algumas dezenas quentes, algumas frias e algumas neutras, para ter um jogo variado que use informações do histórico sem ficar preso só em um grupo de números. [web:300][web:288]
+- **aleatorio_puro** – dezenas totalmente aleatórias no intervalo 1–60. [web:295]
+- **balanceado_par_impar** – tenta manter equilíbrio entre pares e ímpares (ex.: 3–3). [web:263]
+- **faixas** – espalha números em 1–20, 21–40 e 41–60. [web:266]
+- **sem_sequencias** – evita sequências longas de dezenas consecutivas. [web:275]
+- **hot** – prioriza dezenas mais frequentes no histórico (“quentes”). [web:288]
+- **cold** – prioriza dezenas menos frequentes (“frias”). [web:288]
+- **hot_cold_misto** – mistura quentes, frias e neutras para variar o jogo. [web:300]
                 """
             )
 
@@ -206,25 +196,44 @@ As estratégias abaixo só organizam os números de formas diferentes, para deix
         return
 
     try:
-        df_jogos = gerar_jogos(
-            int(qtd_jogos),
-            int(dezenas_por_jogo),
-            estrategia,
-            freq_df=freq_df,   # novo parâmetro
-        )
+        if gerar_todas:
+            # ignora qtd_jogos e gera 1 por estratégia
+            linhas = []
+            for nome_estrategia in estrategias_disponiveis:
+                df_tmp = gerar_jogos(
+                    qtd_jogos=1,
+                    dezenas_por_jogo=int(dezenas_por_jogo),
+                    estrategia=nome_estrategia,
+                    freq_df=freq_df,
+                )
+                # adiciona coluna com o nome da estratégia
+                df_tmp["estrategia"] = nome_estrategia
+                linhas.append(df_tmp)
+
+            df_jogos = pd.concat(linhas, ignore_index=True)
+        else:
+            df_jogos = gerar_jogos(
+                int(qtd_jogos),
+                int(dezenas_por_jogo),
+                estrategia,
+                freq_df=freq_df,
+            )
     except Exception as e:
         st.error(f"Erro ao gerar jogos: {e}")
         return
 
-    # formata coluna do jogo
-    df_jogos["jogo"] = df_jogos["jogo"].apply(lambda x: f"#{int(x)}")
+    # formata coluna do jogo com '#'
+    if "jogo" in df_jogos.columns:
+        df_jogos["jogo"] = df_jogos["jogo"].apply(lambda x: f"#{int(x)}")
 
     st.subheader("Jogos gerados")
     st.dataframe(df_jogos, width="stretch", hide_index=True)
 
     try:
         preco = preco_por_jogo(int(dezenas_por_jogo))
-        total = custo_total(int(qtd_jogos), int(dezenas_por_jogo))
+        # se gerar_todas, o número de jogos é o número de linhas
+        qtd_para_preco = len(df_jogos) if gerar_todas else int(qtd_jogos)
+        total = custo_total(qtd_para_preco, int(dezenas_por_jogo))
         msg_preco = (
             f"Preço por jogo: **R$ {preco:,.2f}**  |  "
             f"Custo total: **R$ {total:,.2f}**"
@@ -241,6 +250,7 @@ As estratégias abaixo só organizam os números de formas diferentes, para deix
         file_name="jogos_mega_sena.csv",
         mime="text/csv",
     )
+
 
 
 
