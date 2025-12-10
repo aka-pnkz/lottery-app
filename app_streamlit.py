@@ -169,9 +169,10 @@ def pagina_gerar_jogos():
 
     st.subheader("Jogos gerados")
 
-    # renomeia coluna e esconde índice
-    df_view = df_jogos.rename(columns={"jogo": "Jogo #"})
+    # renomeia coluna do identificador de jogo e esconde o índice
+    df_view = df_jogos.rename(columns={"jogo": "# Jogo"})
     st.dataframe(df_view, width="stretch", hide_index=True)
+
 
 
     try:
