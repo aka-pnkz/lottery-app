@@ -485,7 +485,7 @@ def pagina_analises(df_concursos: pd.DataFrame, freq_df: pd.DataFrame) -> None:
 
 
 # ==========================
-# UI – SIDEBAR GERAÇÃO
+# UI – SIDEBAR
 # ==========================
 with st.sidebar:
     st.title("Mega Sena Helper 🎰")
@@ -550,16 +550,21 @@ with st.sidebar:
         else:
             base_str = ""
 
+        st.markdown("---")
+        mostrar_frequencias = st.checkbox(
+            "Mostrar tabela de frequências",
+            value=True,
+        )
+
         gerar = st.button("Gerar jogos agora", type="primary")
+
     else:
         estrategia = None
         qtd_jogos = tam_jogo = limite_seq = 0
         q_quentes = q_frias = q_neutras = 0
         base_str = ""
+        mostrar_frequencias = False
         gerar = False
-
-    st.markdown("---")
-    mostrar_frequencias = st.checkbox("Mostrar tabela de frequências", value=True)
 
 
 # ==========================
