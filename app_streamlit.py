@@ -354,9 +354,13 @@ Todas as análises são estatísticas descritivas do passado e não aumentam mat
         st.info("Mostra quantas vezes cada dezena já foi sorteada no histórico. [web:322]")
         try:
             freq_df = analyze_frequency(df_hist)
-            st.dataframe(freq_df, width="stretch")
+            if freq_df is None or freq_df.empty:
+                st.warning("Não foi possível calcular a frequência (DataFrame vazio).")
+            else:
+                st.dataframe(freq_df, width="stretch")
         except Exception as e:
-            st.error(f"Erro ao calcular frequência: {e}")
+            st.error(f"Erro ao calcular frequência (detalhe): {e}")
+
 
     with aba_atraso:
         st.subheader("Atraso das dezenas")
