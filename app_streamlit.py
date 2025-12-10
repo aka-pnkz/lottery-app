@@ -13,24 +13,23 @@ HIST_CSV_PATH = Path("historico_mega_sena.csv")  # ajuste se quiser outro caminh
 
 def load_data() -> pd.DataFrame:
     """
-    Carrega histórico da Mega-Sena de um CSV separado por ';'.
-    Espera colunas: concurso, data, dezena1..dezena6.
+    Carrega histórico da Mega-Sena a partir da planilha Mega-Sena.xlsx
+    (aba 'MEGA SENA', colunas: Concurso, Data do Sorteio, Bola1..Bola6). [file:492]
     """
-    if not HIST_CSV_PATH.exists():
-        return pd.DataFrame()
-
-    df = pd.read_csv(HIST_CSV_PATH, sep=";")
+    # se você já salvou como CSV, use pd.read_csv("historico_mega_sena.csv", sep=";")
+    df = pd.read_excel("Mega-Sena.xlsx", sheet_name="MEGA SENA")
+    # mantém só concurso, data e bolas
+    df = df[["Concurso", "Data do Sorteio", "Bola1", "Bola2", "Bola3", "Bola4", "Bola5", "Bola6"]]
     return df
+
 
 
 
 # ---------------- FUNÇÕES DE ANÁLISE ----------------
 
 def _cols_dezenas(df: pd.DataFrame) -> list:
-    # se suas colunas são exatamente dezena1, dezena2, ..., force explicitamente
-    return [c for c in df.columns if c.lower().startswith("dezena")]
-    # ou, se souber o nome exato:
-    # return ["dezena1", "dezena2", "dezena3", "dezena4", "dezena5", "dezena6"]
+    # colunas de dezenas são Bola1..Bola6 [file:492]
+    return [c for c in df.columns if c.lower().startswith("bola")]
 
 def analyze_frequency(df_hist: pd.DataFrame) -> pd.DataFrame:
     if df_hist.empty:
@@ -38,19 +37,11 @@ def analyze_frequency(df_hist: pd.DataFrame) -> pd.DataFrame:
 
     dezenas_cols = _cols_dezenas(df_hist)
     if not dezenas_cols:
-        st.error(f"Nenhuma coluna de dezenas encontrada. Colunas do histórico: {list(df_hist.columns)}")
+        st.error(f"Nenhuma coluna de dezenas encontrada. Colunas: {list(df_hist.columns)}")
         return pd.DataFrame()
 
-    # derrete apenas as colunas de dezenas em uma coluna chamada 'dezena'
     df_melt = df_hist.melt(value_vars=dezenas_cols, value_name="dezena")
-
-    if "dezena" not in df_melt.columns:
-        st.error(f"Coluna 'dezena' não existe após melt. Colunas: {list(df_melt.columns)}")
-        return pd.DataFrame()
-
     df_melt = df_melt.dropna(subset=["dezena"])
-    df_melt["dezena"] = df_melt["dezena"].astype(str).str.strip()
-    df_melt = df_melt[df_melt["dezena"].str.fullmatch(r"\d+")]
     df_melt["dezena"] = df_melt["dezena"].astype(int)
 
     freq = (
@@ -60,8 +51,8 @@ def analyze_frequency(df_hist: pd.DataFrame) -> pd.DataFrame:
         .reset_index()
         .rename(columns={"index": "dezena", "dezena": "frequencia"})
     )
-
     return freq.sort_values("dezena")
+
 
 
 
