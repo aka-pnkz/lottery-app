@@ -12,10 +12,10 @@ st.set_page_config(
     page_title="Mega Sena Helper",
     page_icon="🎰",
     layout="wide",
+    initial_sidebar_state="expanded",
 )
 
 CSV_PATH = "historico_mega_sena.csv"
-
 
 # ==========================
 # CARGA E ESTATÍSTICAS BÁSICAS
@@ -118,11 +118,13 @@ def gerar_setorial(qtd_jogos: int, tam_jogo: int) -> list[list[int]]:
             q2 = base + (1 if resto > 1 else 0)
             q3 = base
 
-        dezenas = np.concatenate([
-            np.random.choice(s1, size=min(q1, len(s1)), replace=False),
-            np.random.choice(s2, size=min(q2, len(s2)), replace=False),
-            np.random.choice(s3, size=min(q3, len(s3)), replace=False),
-        ])
+        dezenas = np.concatenate(
+            [
+                np.random.choice(s1, size=min(q1, len(s1)), replace=False),
+                np.random.choice(s2, size=min(q2, len(s2)), replace=False),
+                np.random.choice(s3, size=min(q3, len(s3)), replace=False),
+            ]
+        )
 
         if len(dezenas) > tam_jogo:
             dezenas = np.random.choice(dezenas, size=tam_jogo, replace=False)
@@ -155,20 +157,28 @@ def gerar_quentes_frias_mix(
 
         if len(quentes) > 0 and q_quentes > 0:
             dezenas.extend(
-                np.random.choice(quentes, size=min(q_quentes, len(quentes)), replace=False)
+                np.random.choice(
+                    quentes, size=min(q_quentes, len(quentes)), replace=False
+                )
             )
         if len(frias) > 0 and q_frias > 0:
             dezenas.extend(
-                np.random.choice(frias, size=min(q_frias, len(frias)), replace=False)
+                np.random.choice(
+                    frias, size=min(q_frias, len(frias)), replace=False
+                )
             )
         if len(neutras) > 0 and q_neutras > 0:
             dezenas.extend(
-                np.random.choice(neutras, size=min(q_neutras, len(neutras)), replace=False)
+                np.random.choice(
+                    neutras, size=min(q_neutras, len(neutras)), replace=False
+                )
             )
 
         if len(dezenas) < tam_jogo:
             universe = np.setdiff1d(np.arange(1, 61), dezenas)
-            extra = np.random.choice(universe, size=tam_jogo - len(dezenas), replace=False)
+            extra = np.random.choice(
+                universe, size=tam_jogo - len(dezenas), replace=False
+            )
             dezenas = np.concatenate([dezenas, extra])
 
         jogos.append(sorted(list(map(int, dezenas))))
@@ -307,7 +317,8 @@ def calcular_somas(df_concursos: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFra
     df["faixa_soma"] = pd.cut(df["soma"], bins=bins, labels=labels, right=True)
 
     dist_faixas = (
-        df["faixa_soma"].value_counts(dropna=False)
+        df["faixa_soma"]
+        .value_counts(dropna=False)
         .sort_index()
         .reset_index()
         .rename(columns={"index": "faixa_soma", "faixa_soma": "qtd"})
@@ -335,18 +346,14 @@ def calcular_pares_trios(
             trios_contagem[key] = trios_contagem.get(key, 0) + 1
 
     df_pares = (
-        pd.DataFrame(
-            [{"par": k, "qtd": v} for k, v in pares_contagem.items()]
-        )
+        pd.DataFrame([{"par": k, "qtd": v} for k, v in pares_contagem.items()])
         .sort_values("qtd", ascending=False)
         .head(top_n)
         .reset_index(drop=True)
     )
 
     df_trios = (
-        pd.DataFrame(
-            [{"trio": k, "qtd": v} for k, v in trios_contagem.items()]
-        )
+        pd.DataFrame([{"trio": k, "qtd": v} for k, v in trios_contagem.items()])
         .sort_values("qtd", ascending=False)
         .head(top_n)
         .reset_index(drop=True)
@@ -356,7 +363,7 @@ def calcular_pares_trios(
 
 
 def pagina_analises(df_concursos: pd.DataFrame, freq_df: pd.DataFrame) -> None:
-    st.header("Análises estatísticas da Mega-Sena")
+    st.title("Análises estatísticas da Mega-Sena")
 
     st.markdown(
         "As análises abaixo são descritivas: ajudam a entender o histórico "
@@ -389,10 +396,11 @@ def pagina_analises(df_concursos: pd.DataFrame, freq_df: pd.DataFrame) -> None:
         with col1:
             st.markdown("#### Frequência das dezenas")
             st.dataframe(
-                freq_df.sort_values("frequencia", ascending=False).reset_index(drop=True),
-                width="stretch",
-                height=400,
+                freq_df.sort_values("frequencia", ascending=False).reset_index(
+                    drop=True
+                ),
                 hide_index=True,
+                use_container_width=True,
             )
 
         with col2:
@@ -401,16 +409,15 @@ def pagina_analises(df_concursos: pd.DataFrame, freq_df: pd.DataFrame) -> None:
                 atraso_df.sort_values(
                     ["atraso_atual", "frequencia"], ascending=[False, False]
                 ).reset_index(drop=True),
-                width="stretch",
-                height=400,
                 hide_index=True,
+                use_container_width=True,
             )
 
     with tab_padroes:
         st.subheader("Distribuição de pares/ímpares e baixa/alta")
 
-        df_padroes, dist_par_impar, dist_baixa_alta = calcular_padroes_par_impar_baixa_alta(
-            df_concursos
+        df_padroes, dist_par_impar, dist_baixa_alta = (
+            calcular_padroes_par_impar_baixa_alta(df_concursos)
         )
 
         st.markdown(
@@ -418,14 +425,14 @@ def pagina_analises(df_concursos: pd.DataFrame, freq_df: pd.DataFrame) -> None:
             "baixos (1–30) e altos (31–60) saíram."
         )
 
-        st.dataframe(dist_par_impar, width="stretch", hide_index=True)
-        st.dataframe(dist_baixa_alta, width="stretch", hide_index=True)
+        st.dataframe(dist_par_impar, hide_index=True, use_container_width=True)
+        st.dataframe(dist_baixa_alta, hide_index=True, use_container_width=True)
 
         with st.expander("Ver tabela detalhada por concurso"):
             st.dataframe(
                 df_padroes.sort_values("concurso"),
-                width="stretch",
                 hide_index=True,
+                use_container_width=True,
             )
 
     with tab_somas:
@@ -444,18 +451,16 @@ def pagina_analises(df_concursos: pd.DataFrame, freq_df: pd.DataFrame) -> None:
             st.markdown("#### Tabela por concurso")
             st.dataframe(
                 df_somas.sort_values("concurso").reset_index(drop=True),
-                width="stretch",
-                height=400,
                 hide_index=True,
+                use_container_width=True,
             )
 
         with col2:
             st.markdown("#### Distribuição por faixa de soma")
             st.dataframe(
                 dist_faixas,
-                width="stretch",
-                height=400,
                 hide_index=True,
+                use_container_width=True,
             )
 
     with tab_pares_trios:
@@ -480,81 +485,168 @@ def pagina_analises(df_concursos: pd.DataFrame, freq_df: pd.DataFrame) -> None:
 
         with col1:
             st.markdown("#### Pares mais frequentes")
-            st.dataframe(df_pares, width="stretch", height=400, hide_index=True)
+            st.dataframe(
+                df_pares,
+                hide_index=True,
+                use_container_width=True,
+            )
 
         with col2:
             st.markdown("#### Trios mais frequentes")
-            st.dataframe(df_trios, width="stretch", height=400, hide_index=True)
+            st.dataframe(
+                df_trios,
+                hide_index=True,
+                use_container_width=True,
+            )
 
 
 # ==========================
-# UI – SIDEBAR
+# CARGA DOS DADOS (SEGURO)
+# ==========================
+try:
+    df_concursos = carregar_concursos(CSV_PATH)
+    freq_df = calcular_frequencias(df_concursos)
+except FileNotFoundError:
+    st.error(
+        "Arquivo de concursos não encontrado. "
+        "Certifique-se de que historico_mega_sena.csv está na raiz do projeto."
+    )
+    st.stop()
+except Exception as e:
+    st.error(f"Ocorreu um erro ao carregar/usar os dados: {e}")
+    st.stop()
+
+# ==========================
+# UI – SIDEBAR (CONTROLES)
 # ==========================
 with st.sidebar:
     st.title("Mega Sena Helper 🎰")
 
     pagina = st.radio(
-        "Página",
+        "Navegação",
         ["Gerar jogos", "Análises estatísticas"],
     )
 
+    gerar = False  # default
+
+    if pagina == "Gerar jogos":
+        estrategia = st.selectbox(
+            "Estratégia",
+            [
+                "Aleatório puro",
+                "Balanceado par/ímpar",
+                "Setorial (faixas)",
+                "Quentes/Frias/Mix",
+                "Sem sequências longas",
+                "Wheeling simples (base fixa)",
+            ],
+        )
+
+        qtd_jogos = st.slider("Quantidade de jogos", 1, 30, 10)
+        tam_jogo = st.slider("Dezenas por jogo", 6, 15, 6)
+
+        if estrategia == "Quentes/Frias/Mix":
+            col_q1, col_q2, col_q3 = st.columns(3)
+            with col_q1:
+                q_quentes = st.number_input("Quentes", 0, 10, 3)
+            with col_q2:
+                q_frias = st.number_input("Frias", 0, 10, 2)
+            with col_q3:
+                q_neutras = st.number_input("Neutras", 0, 10, 1)
+
+        if estrategia == "Sem sequências longas":
+            limite_seq = st.slider("Máx. sequência", 2, 6, 3)
+
+        if estrategia == "Wheeling simples (base fixa)":
+            st.text_input(
+                "Base (separada por vírgulas)",
+                key="base_wheeling_value",
+                placeholder="Ex: 1, 5, 12, 23, 34, 45, 56",
+            )
+
+        gerar = st.button("Gerar jogos", type="primary", use_container_width=True)
+
+# ==========================
+# EXPLICAÇÕES DAS ESTRATÉGIAS
+# ==========================
+explicacoes = {
+    "Aleatório puro": (
+        "Sorteia dezenas totalmente aleatórias entre 1 e 60, "
+        "alinhado ao fato de que todas as combinações têm a mesma chance."
+    ),
+    "Balanceado par/ímpar": (
+        "Tenta manter distribuições como 3–3 ou 4–2 de pares/ímpares, "
+        "evitando padrões extremos (tudo par ou tudo ímpar)."
+    ),
+    "Setorial (faixas)": (
+        "Distribui dezenas entre as faixas 1–20, 21–40 e 41–60, "
+        "evitando concentrar todos os números em um único trecho."
+    ),
+    "Quentes/Frias/Mix": (
+        "Combina dezenas mais sorteadas (quentes), mais atrasadas (frias) e neutras, "
+        "usando o histórico apenas como referência."
+    ),
+    "Sem sequências longas": (
+        "Rejeita jogos com muitas dezenas consecutivas (por exemplo 10–11–12–13), "
+        "padrão que muitos apostadores preferem evitar."
+    ),
+    "Wheeling simples (base fixa)": (
+        "Gera combinações de 6 dezenas dentro de uma base fixa, "
+        "formando um mini-fechamento com melhor cobertura daquele conjunto."
+    ),
+}
+
+# ==========================
+# CORPO – PÁGINAS
+# ==========================
 if pagina == "Gerar jogos":
-    explicacoes = {
-        "Aleatório puro": (
-            "Sorteia dezenas totalmente aleatórias entre 1 e 60, "
-            "alinhado ao fato de que todas as combinações têm a mesma chance."
-        ),
-        "Balanceado par/ímpar": (
-            "Tenta manter distribuições como 3–3 ou 4–2 de pares/ímpares, "
-            "evitando padrões extremos (tudo par ou tudo ímpar)."
-        ),
-        "Setorial (faixas)": (
-            "Distribui dezenas entre as faixas 1–20, 21–40 e 41–60, "
-            "evitando concentrar todos os números em um único trecho."
-        ),
-        "Quentes/Frias/Mix": (
-            "Combina dezenas mais sorteadas (quentes), mais atrasadas (frias) e neutras, "
-            "usando o histórico apenas como referência."
-        ),
-        "Sem sequências longas": (
-            "Rejeita jogos com muitas dezenas consecutivas (por exemplo 10–11–12–13), "
-            "padrão que muitos apostadores preferem evitar."
-        ),
-        "Wheeling simples (base fixa)": (
-            "Gera combinações de 6 dezenas dentro de uma base fixa, "
-            "formando um mini-fechamento com melhor cobertura daquele conjunto."
-        ),
-    }
+    # Cabeçalho
+    st.title("Gerador de jogos da Mega-Sena")
 
-    st.info(explicacoes.get(estrategia, ""))
-
-    # duas colunas só para histórico e parâmetros
-    col1, col2 = st.columns([2, 1])
+    # Bloco de resumo em duas colunas
+    col1, col2 = st.columns(2)
 
     with col1:
-        st.subheader("Histórico carregado")
-        st.write(
-            f"Total de concursos: **{len(df_concursos)}** "
-            f"(de {df_concursos['data'].min().date()} até {df_concursos['data'].max().date()})"
+        st.metric(
+            "Total de concursos",
+            value=len(df_concursos),
+            help="Período do histórico carregado",
+        )
+        st.caption(
+            f"De {df_concursos['data'].min().date()} "
+            f"até {df_concursos['data'].max().date()}"
         )
 
     with col2:
-        st.subheader("Parâmetros selecionados")
-        st.write(f"- Estratégia: **{estrategia}**")
-        st.write(f"- Jogos: **{qtd_jogos}**")
-        st.write(f"- Dezenas por jogo: **{tam_jogo}**")
+        st.markdown("**Parâmetros atuais**")
+        if "estrategia" in locals():
+            st.write(f"- Estratégia: **{estrategia}**")
+            if "qtd_jogos" in locals():
+                st.write(f"- Jogos: **{qtd_jogos}** | Dezenas: **{tam_jogo}**")
+            if "q_quentes" in locals() and estrategia == "Quentes/Frias/Mix":
+                st.write(f"- Mix: {q_quentes}Q / {q_frias}F / {q_neutras}N")
+            if "limite_seq" in locals() and estrategia == "Sem sequências longas":
+                st.write(f"- Máx. sequência: {limite_seq}")
+            if estrategia == "Wheeling simples (base fixa)":
+                st.write(
+                    f"- Base: `{st.session_state.get('base_wheeling_value', '')}`"
+                )
+        else:
+            st.write("Defina a estratégia na barra lateral.")
 
-        if estrategia == "Quentes/Frias/Mix":
-            st.write(
-                f"- Mix: **{q_quentes} quentes, {q_frias} frias, {q_neutras} neutras**"
-            )
-        if estrategia == "Sem sequências longas":
-            st.write(f"- Máx. sequência: **{limite_seq}** dezenas seguidas")
-        if estrategia == "Wheeling simples (base fixa)":
-            st.write(f"- Base atual: `{st.session_state.get('base_wheeling_value', '')}`")
+    st.divider()
 
-    # ---- BLOCOS DE JOGOS (abaixo das duas colunas, centralizado) ----
-    if gerar:
+    # Explicação da estratégia em expander
+    if "estrategia" in locals():
+        with st.expander("Como funciona esta estratégia?", expanded=False):
+            st.write(explicacoes.get(estrategia, ""))
+
+    # Tabs para jogos e tabela/export
+    tab_jogos, tab_tabela = st.tabs(["Jogos gerados", "Tabela / Exportar"])
+
+    jogos = []
+
+    if gerar and "estrategia" in locals():
         if estrategia == "Aleatório puro":
             jogos = gerar_aleatorio_puro(qtd_jogos, tam_jogo)
         elif estrategia == "Balanceado par/ímpar":
@@ -588,35 +680,38 @@ if pagina == "Gerar jogos":
                 )
             except Exception:
                 jogos = []
-        else:
-            jogos = []
 
-        st.markdown("### Jogos gerados")
-
-        if not jogos:
-            st.warning("Nenhum jogo gerado. Verifique os parâmetros.")
-        else:
-            # linha própria de 3 colunas; usamos só a central
+    # Conteúdo das tabs
+    if not jogos and gerar:
+        tab_jogos.warning("Nenhum jogo gerado. Verifique os parâmetros.")
+        tab_tabela.info("Nenhum dado para exibir.")
+    elif not jogos:
+        tab_jogos.write(
+            "Defina os parâmetros na barra lateral e clique em **Gerar jogos**."
+        )
+        tab_tabela.write("A tabela aparecerá aqui após gerar os jogos.")
+    else:
+        with tab_jogos:
             col_left, col_center, col_right = st.columns([1, 2, 1])
-
             with col_center:
                 for i, jogo in enumerate(jogos, start=1):
                     st.code(f"Jogo {i:02d}: {formatar_jogo(jogo)}")
 
-                jogos_df = pd.DataFrame(
-                    jogos,
-                    columns=[f"d{i}" for i in range(1, len(jogos[0]) + 1)],
-                )
-                csv_data = jogos_df.to_csv
+        with tab_tabela:
+            jogos_df = pd.DataFrame(
+                jogos,
+                columns=[f"d{i}" for i in range(1, len(jogos[0]) + 1)],
+            )
+            st.dataframe(jogos_df, hide_index=True, use_container_width=True)
 
+            csv_data = jogos_df.to_csv(index=False).encode("utf-8")
+            st.download_button(
+                "Baixar CSV",
+                data=csv_data,
+                file_name=f"jogos_{datetime.now().date()}.csv",
+                mime="text/csv",
+                use_container_width=True,
+            )
 
-    else:
-        pagina_analises(df_concursos, freq_df)
-
-except FileNotFoundError:
-    st.error(
-        "Arquivo de concursos não encontrado. "
-        "Certifique-se de que historico_mega_sena.csv está na raiz do projeto."
-    )
-except Exception as e:
-    st.error(f"Ocorreu um erro ao carregar/usar os dados: {e}")
+else:
+    pagina_analises(df_concursos, freq_df)
