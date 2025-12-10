@@ -167,11 +167,12 @@ def pagina_gerar_jogos():
         st.error(f"Erro ao gerar jogos: {e}")
         return
 
-    st.subheader("Jogos gerados")
+    # Formata coluna 'jogo' como texto com '#'
+    df_jogos["jogo"] = df_jogos["jogo"].apply(lambda x: f"#{int(x)}")
 
-    # renomeia coluna do identificador de jogo e esconde o índice
-    df_view = df_jogos.rename(columns={"jogo": "# Jogo"})
-    st.dataframe(df_view, width="stretch", hide_index=True)
+    st.subheader("Jogos gerados")
+    st.dataframe(df_jogos, width="stretch", hide_index=True)
+
 
 
 
