@@ -384,30 +384,32 @@ Todas as análises são estatísticas descritivas do passado e não aumentam mat
         except Exception as e:
             st.error(f"Erro ao calcular distribuição par/ímpar: {e}")
 
+    # FAIXAS
     with aba_faixas:
-    st.subheader("Distribuição por faixas")
-    st.info("Mostra como as dezenas se distribuem entre 1–20, 21–40 e 41–60. [web:322]")
-    try:
-        df_tmp = df_hist.copy()
-        dezenas_cols = _cols_dezenas(df_tmp)
-        df_melt = df_tmp.melt(value_vars=dezenas_cols, value_name="dezena")
+        st.subheader("Distribuição por faixas")
+        st.info("Mostra como as dezenas se distribuem entre 1–20, 21–40 e 41–60. [web:322]")
+        try:
+            df_tmp = df_hist.copy()
+            dezenas_cols = _cols_dezenas(df_tmp)
+            df_melt = df_tmp.melt(value_vars=dezenas_cols, value_name="dezena")
 
-        if "dezena" not in df_melt.columns:
-            st.error(f"Coluna 'dezena' não existe após melt. Colunas: {list(df_melt.columns)}")
-        else:
-            df_melt = df_melt.dropna(subset=["dezena"])
-            df_melt["dezena"] = df_melt["dezena"].astype(str).str.strip()
-            df_melt = df_melt[df_melt["dezena"].str.fullmatch(r"\d+")]
-            df_melt["dezena"] = df_melt["dezena"].astype(int)
-            df_melt["faixa"] = pd.cut(
-                df_melt["dezena"],
-                bins=[0, 20, 40, 60],
-                labels=["1-20", "21-40", "41-60"],
-            )
-            faixas_df = df_melt.groupby("faixa", observed=False)["dezena"].count().reset_index(name="qtd")
-            st.dataframe(faixas_df, width="stretch")
-    except Exception as e:
-        st.error(f"Erro ao calcular distribuição por faixas: {e}")
+            if "dezena" not in df_melt.columns:
+                st.error(f"Coluna 'dezena' não existe após melt. Colunas: {list(df_melt.columns)}")
+            else:
+                df_melt = df_melt.dropna(subset=["dezena"])
+                df_melt["dezena"] = df_melt["dezena"].astype(str).str.strip()
+                df_melt = df_melt[df_melt["dezena"].str.fullmatch(r"\d+")]
+                df_melt["dezena"] = df_melt["dezena"].astype(int)
+                df_melt["faixa"] = pd.cut(
+                    df_melt["dezena"],
+                    bins=[0, 20, 40, 60],
+                    labels=["1-20", "21-40", "41-60"],
+                )
+                faixas_df = df_melt.groupby("faixa", observed=False)["dezena"].count().reset_index(name="qtd")
+                st.dataframe(faixas_df, width="stretch")
+        except Exception as e:
+            st.error(f"Erro ao calcular distribuição por faixas: {e}")
+
 
 
 
