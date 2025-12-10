@@ -13,15 +13,15 @@ HIST_CSV_PATH = Path("historico_mega_sena.csv")  # ajuste se quiser outro caminh
 
 def load_data() -> pd.DataFrame:
     """
-    Carrega histórico da Mega-Sena de um CSV.
-    Espera colunas: concurso, data, dezena1..dezena6 (ou mais dezenas).
-    Se não encontrar o arquivo, devolve DataFrame vazio.
+    Carrega histórico da Mega-Sena de um CSV separado por ';'.
+    Espera colunas: concurso, data, dezena1..dezena6.
     """
     if not HIST_CSV_PATH.exists():
         return pd.DataFrame()
 
-    df = pd.read_csv(HIST_CSV_PATH)
+    df = pd.read_csv(HIST_CSV_PATH, sep=";")
     return df
+
 
 
 # ---------------- FUNÇÕES DE ANÁLISE ----------------
@@ -32,17 +32,16 @@ def _cols_dezenas(df: pd.DataFrame) -> list:
 
 
 def analyze_frequency(df_hist: pd.DataFrame) -> pd.DataFrame:
-    """
-    Calcula a frequência de cada dezena no histórico.
-    Considera colunas que começam com 'dezena'.
-    """
     if df_hist.empty:
         return pd.DataFrame()
 
     dezenas_cols = _cols_dezenas(df_hist)
     df_melt = df_hist.melt(value_vars=dezenas_cols, value_name="dezena")
 
+    # Remove linhas vazias e converte só valores simples
     df_melt = df_melt.dropna(subset=["dezena"])
+    df_melt["dezena"] = df_melt["dezena"].astype(str).str.strip()
+    df_melt = df_melt[df_melt["dezena"].str.fullmatch(r"\d+")]
     df_melt["dezena"] = df_melt["dezena"].astype(int)
 
     freq = (
@@ -52,8 +51,8 @@ def analyze_frequency(df_hist: pd.DataFrame) -> pd.DataFrame:
         .reset_index()
         .rename(columns={"index": "dezena", "dezena": "frequencia"})
     )
-
     return freq.sort_values("dezena")
+
 
 
 def analyze_delay(df_hist: pd.DataFrame) -> pd.DataFrame:
