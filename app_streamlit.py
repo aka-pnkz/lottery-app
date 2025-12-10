@@ -48,23 +48,49 @@ def pagina_historico(df: pd.DataFrame):
     col_concurso = "Concurso"
     col_data = "Data Sorteio"
 
+    # Contagem básica
     if col_concurso in df.columns:
         total_concursos = df[col_concurso].nunique()
         st.write(f"Total de concursos carregados: **{total_concursos}**")
     else:
         st.write(f"Total de linhas no arquivo: **{len(df)}**")
 
+    # Conversão de data e ordenação
     if col_data in df.columns:
-        try:
-            df[col_data] = pd.to_datetime(df[col_data], errors="coerce", dayfirst=True)
-            ultima_data = df[col_data].max()
-            if pd.notna(ultima_data):
-                st.write(f"Último concurso em: **{ultima_data.date()}**")
-        except Exception:
-            pass
+        df[col_data] = pd.to_datetime(df[col_data], errors="coerce", dayfirst=True)
 
-    st.subheader("Últimos concursos")
-    st.dataframe(df.tail(20), width="stretch")
+    # Controles do usuário
+    col_ctrl1, col_ctrl2 = st.columns(2)
+    with col_ctrl1:
+        qtd_mostrar = st.selectbox(
+            "Quantidade de resultados a exibir",
+            options=[10, 20, 50, 100, 200, 500],
+            index=1,  # default 20
+        )
+    with col_ctrl2:
+        ordem_desc = st.checkbox(
+            "Mostrar do mais recente para o mais antigo",
+            value=True,
+        )
+
+    df_view = df.copy()
+
+    # Ordenação por data (se existir), senão por concurso
+    if col_data in df_view.columns and pd.api.types.is_datetime64_any_dtype(
+        df_view[col_data]
+    ):
+        df_view = df_view.sort_values(col_data, ascending=not ordem_desc)
+    elif col_concurso in df_view.columns:
+        df_view = df_view.sort_values(col_concurso, ascending=not ordem_desc)
+
+    # Último concurso (depois da ordenação)
+    if col_data in df_view.columns and pd.notna(df_view[col_data]).any():
+        ultima_data = df_view[col_data].max()
+        st.write(f"Último concurso em: **{ultima_data.date()}**")
+
+    st.subheader("Resultados")
+    st.dataframe(df_view.head(qtd_mostrar), width="stretch")
+
 
 
 def pagina_analises(df: pd.DataFrame):
