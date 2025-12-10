@@ -34,7 +34,7 @@ def analyze_frequency(df_hist: pd.DataFrame) -> pd.DataFrame:
     if df_hist.empty:
         return pd.DataFrame()
 
-    dezenas_cols = [c for c in df_hist.columns if c.startswith("d")]
+    dezenas_cols = [c for c in df_hist.columns if c.startswith("dezena")]
     df_melt = df_hist.melt(value_vars=dezenas_cols, value_name="dezena")
     freq = df_melt["dezena"].value_counts().sort_index()
     out = (
