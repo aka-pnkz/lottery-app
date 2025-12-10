@@ -145,9 +145,18 @@ def pagina_gerar_jogos():
         )
         estrategia = st.selectbox(
             "Estratégia",
-            ["aleatorio_puro"],
+            [
+                "aleatorio_puro",
+                "balanceado_par_impar",
+                "faixas",
+                "sem_sequencias",
+                "hot",
+                "cold",
+                "hot_cold_misto",
+            ],
             index=0,
         )
+
         submitted = st.form_submit_button("Gerar jogos")
 
     if not submitted:
