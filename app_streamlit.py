@@ -128,6 +128,13 @@ def pagina_analises(df: pd.DataFrame):
 def pagina_gerar_jogos():
     st.header("Gerar jogos")
 
+    # carrega histórico para estratégias hot/cold
+    try:
+        df_hist = load_data()
+        freq_df = analyze_frequency(df_hist) if not df_hist.empty else None
+    except Exception:
+        freq_df = None
+
     with st.form("form_gerar_jogos"):
         qtd_jogos = st.number_input(
             "Quantidade de jogos",
@@ -156,7 +163,6 @@ def pagina_gerar_jogos():
             ],
             index=0,
         )
-
         submitted = st.form_submit_button("Gerar jogos")
 
     if not submitted:
@@ -171,19 +177,17 @@ def pagina_gerar_jogos():
             int(qtd_jogos),
             int(dezenas_por_jogo),
             estrategia,
+            freq_df=freq_df,   # novo parâmetro
         )
     except Exception as e:
         st.error(f"Erro ao gerar jogos: {e}")
         return
 
-    # Formata coluna 'jogo' como texto com '#'
+    # formata coluna do jogo
     df_jogos["jogo"] = df_jogos["jogo"].apply(lambda x: f"#{int(x)}")
 
     st.subheader("Jogos gerados")
     st.dataframe(df_jogos, width="stretch", hide_index=True)
-
-
-
 
     try:
         preco = preco_por_jogo(int(dezenas_por_jogo))
@@ -204,6 +208,7 @@ def pagina_gerar_jogos():
         file_name="jogos_mega_sena.csv",
         mime="text/csv",
     )
+
 
 
 def pagina_simulacao():
