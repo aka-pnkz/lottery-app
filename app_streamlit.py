@@ -254,7 +254,9 @@ def calcular_atraso(freq_df: pd.DataFrame, df_concursos: pd.DataFrame) -> pd.Dat
     return atraso_df
 
 
-def calcular_padroes_par_impar_baixa_alta(df_concursos: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+def calcular_padroes_par_impar_baixa_alta(
+    df_concursos: pd.DataFrame,
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     dezenas_cols = ["d1", "d2", "d3", "d4", "d5", "d6"]
     registros = []
 
@@ -314,7 +316,9 @@ def calcular_somas(df_concursos: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFra
     return df[["concurso", "soma", "faixa_soma"]], dist_faixas
 
 
-def calcular_pares_trios(df_concursos: pd.DataFrame, top_n: int = 50) -> tuple[pd.DataFrame, pd.DataFrame]:
+def calcular_pares_trios(
+    df_concursos: pd.DataFrame, top_n: int = 50
+) -> tuple[pd.DataFrame, pd.DataFrame]:
     dezenas_cols = ["d1", "d2", "d3", "d4", "d5", "d6"]
     pares_contagem = {}
     trios_contagem = {}
@@ -542,18 +546,57 @@ with st.sidebar:
         else:
             q_quentes, q_frias, q_neutras = 3, 2, 1
 
+        # -----------------------
+        # CONTROLES DA BASE (WHEELING)
+        # -----------------------
         if estrategia == "Wheeling simples (base fixa)":
+            modo_base = st.selectbox(
+                "Modo da base de dezenas",
+                [
+                    "Manual",
+                    "Mais sorteados (quentes)",
+                    "Mais atrasados (frios)",
+                    "Mix quentes+frios",
+                ],
+            )
+
+            qtd_base = st.number_input(
+                "Quantidade de dezenas na base",
+                min_value=6,
+                max_value=25,
+                value=12,
+                step=1,
+                help=(
+                    "Define quantos números a base terá para o wheeling. "
+                    "Bases entre 10 e 20 dezenas são mais comuns; "
+                    "bases muito grandes geram muitas combinações."
+                ),
+            )
+
+            gerar_base = st.button("Gerar base sugerida")
+
+            if gerar_base and modo_base != "Manual":
+                st.session_state["__gerar_base_modo"] = modo_base
+                st.session_state["__gerar_base_qtd"] = int(qtd_base)
+
+            base_default = st.session_state.get(
+                "__base_wheeling_sugerida",
+                "1,3,5,7,9,11,13,15,17,19",
+            )
+
             base_str = st.text_input(
                 "Base de dezenas",
-                "1,3,5,7,9,11,13,15,17,19",
+                base_default,
                 help=(
                     "Informe de 6 a ~20 dezenas separadas por vírgula, por exemplo: "
                     "1,3,5,7,9,11,13,15,17,19. "
-                    "O sistema vai gerar jogos de 6 números usando apenas essa base, "
-                    "até a quantidade de jogos escolhida."
+                    "Ou use o botão 'Gerar base sugerida' para preencher automaticamente "
+                    "com base nas análises (quentes, frios, mix)."
                 ),
             )
         else:
+            modo_base = "Manual"
+            qtd_base = 0
             base_str = ""
 
         st.markdown("---")
@@ -569,6 +612,8 @@ with st.sidebar:
         qtd_jogos = tam_jogo = limite_seq = 0
         q_quentes = q_frias = q_neutras = 0
         base_str = ""
+        modo_base = "Manual"
+        qtd_base = 0
         mostrar_frequencias = False
         gerar = False
 
@@ -587,6 +632,51 @@ st.markdown(
 try:
     df_concursos = carregar_concursos(CSV_PATH)
     freq_df = calcular_frequencias(df_concursos)
+
+    # Geração automática da base do wheeling (se solicitado)
+    if (
+        pagina == "Gerar jogos"
+        and estrategia == "Wheeling simples (base fixa)"
+        and "__gerar_base_modo" in st.session_state
+    ):
+        atraso_df_local = calcular_atraso(freq_df, df_concursos)
+        modo = st.session_state["__gerar_base_modo"]
+        qtd = int(st.session_state.get("__gerar_base_qtd", 12))
+
+        base_dezenas_auto: list[int] = []
+
+        if modo == "Mais sorteados (quentes)":
+            base_dezenas_auto = (
+                freq_df.sort_values("frequencia", ascending=False)["dezena"]
+                .head(qtd)
+                .tolist()
+            )
+        elif modo == "Mais atrasados (frios)":
+            base_dezenas_auto = (
+                atraso_df_local.sort_values("atraso_atual", ascending=False)["dezena"]
+                .head(qtd)
+                .tolist()
+            )
+        elif modo == "Mix quentes+frios":
+            q_quentes_base = max(3, qtd // 2)
+            q_frias_base = max(0, qtd - q_quentes_base)
+
+            quentes_base = (
+                freq_df.sort_values("frequencia", ascending=False)["dezena"]
+                .head(q_quentes_base)
+                .tolist()
+            )
+            frias_base = (
+                atraso_df_local.sort_values("atraso_atual", ascending=False)["dezena"]
+                .head(q_frias_base)
+                .tolist()
+            )
+            base_dezenas_auto = sorted(set(quentes_base + frias_base))[:qtd]
+
+        if base_dezenas_auto:
+            st.session_state["__base_wheeling_sugerida"] = ",".join(
+                str(d) for d in base_dezenas_auto
+            )
 
     if pagina == "Gerar jogos":
         explicacoes = {
@@ -644,7 +734,11 @@ try:
             if estrategia == "Sem sequências longas":
                 st.write(f"- Máx. sequência: **{limite_seq}** dezenas seguidas")
             if estrategia == "Wheeling simples (base fixa)":
-                st.write(f"- Base: `{base_str}`")
+                base_atual = st.session_state.get(
+                    "__base_wheeling_sugerida",
+                    base_str or "1,3,5,7,9,11,13,15,17,19",
+                )
+                st.write(f"- Base sugerida/atual: `{base_atual}`")
 
             if gerar:
                 if estrategia == "Aleatório puro":
@@ -668,9 +762,12 @@ try:
                     )
                 elif estrategia == "Wheeling simples (base fixa)":
                     try:
+                        base_texto = st.session_state.get(
+                            "__base_wheeling_sugerida", base_str
+                        ) or base_str
                         base_dezenas = [
                             int(x.strip())
-                            for x in base_str.split(",")
+                            for x in str(base_texto).split(",")
                             if x.strip().isdigit()
                         ]
                         jogos = gerar_wheeling_simples(
