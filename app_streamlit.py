@@ -207,3 +207,82 @@ Elas ajudam a visualizar padrões como frequência, atraso e equilíbrio entre p
     with aba_atraso:
         st.subheader("Atraso das dezenas")
         st.info(
+            "Mostra há quantos concursos cada dezena não aparece, além de atrasos médios "
+            "e máximos, destacando dezenas consideradas 'atrasadas'. [web:323][web:326]"
+        )
+        try:
+            atraso_df = analyze_delay(df_hist)
+            st.dataframe(atraso_df, use_container_width=True)
+        except Exception as e:
+            st.error(f"Erro ao calcular atraso: {e}")
+
+    # PAR / ÍMPAR
+    with aba_par_impar:
+        st.subheader("Distribuição par/ímpar")
+        st.info(
+            "Analisa quantos números pares e ímpares saem em cada sorteio, "
+            "mostrando quais composições aparecem com mais frequência. [web:317][web:320]"
+        )
+        try:
+            par_impar_df = analyze_par_impar(df_hist)
+            st.dataframe(par_impar_df, use_container_width=True)
+        except Exception as e:
+            st.error(f"Erro ao calcular distribuição par/ímpar: {e}")
+
+    # FAIXAS
+    with aba_faixas:
+        st.subheader("Distribuição por faixas")
+        st.info(
+            "Agrupa as dezenas em intervalos (1–20, 21–40, 41–60) e mostra "
+            "como os resultados se distribuem nessas faixas. [web:319][web:328]"
+        )
+        try:
+            df_tmp = df_hist.copy()
+            dezenas_cols = [c for c in df_tmp.columns if c.startswith("d")]
+            df_melt = df_tmp.melt(value_vars=dezenas_cols, value_name="dezena")
+            df_melt["faixa"] = pd.cut(
+                df_melt["dezena"],
+                bins=[0, 20, 40, 60],
+                labels=["1-20", "21-40", "41-60"],
+            )
+            faixas_df = (
+                df_melt.groupby("faixa")["dezena"].count().reset_index(name="qtd")
+            )
+            st.dataframe(faixas_df, use_container_width=True)
+        except Exception as e:
+            st.error(f"Erro ao calcular distribuição por faixas: {e}")
+
+
+# ---------------- PAGINA: SOBRE ----------------
+
+def pagina_sobre():
+    st.header("Sobre o projeto")
+    st.markdown(
+        """
+Aplicativo para estudo estatístico da Mega-Sena e geração de jogos com diferentes estratégias.  
+As análises são baseadas em dados históricos e servem apenas como apoio visual e educacional. [web:335]
+        """
+    )
+
+
+# ---------------- NAVEGAÇÃO PRINCIPAL ----------------
+
+def main():
+    st.set_page_config(page_title="Mega-Sena Helper", layout="wide")
+
+    st.sidebar.title("Navegação")
+    pagina = st.sidebar.selectbox(
+        "Escolha a página",
+        ["Gerar jogos", "Análises", "Sobre"],
+    )
+
+    if pagina == "Gerar jogos":
+        pagina_gerar_jogos()
+    elif pagina == "Análises":
+        pagina_analises()
+    elif pagina == "Sobre":
+        pagina_sobre()
+
+
+if __name__ == "__main__":
+    main()
