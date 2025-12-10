@@ -543,7 +543,16 @@ with st.sidebar:
             q_quentes, q_frias, q_neutras = 3, 2, 1
 
         if estrategia == "Wheeling simples (base fixa)":
-            base_str = st.text_input("Base de dezenas", "1,3,5,7,9,11,13,15,17,19")
+            base_str = st.text_input(
+                "Base de dezenas",
+                "1,3,5,7,9,11,13,15,17,19",
+                help=(
+                    "Informe de 6 a ~20 dezenas separadas por vírgula, por exemplo: "
+                    "1,3,5,7,9,11,13,15,17,19. "
+                    "O sistema vai gerar jogos de 6 números usando apenas essa base, "
+                    "até a quantidade de jogos escolhida."
+                ),
+            )
         else:
             base_str = ""
 
