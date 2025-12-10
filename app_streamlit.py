@@ -104,29 +104,24 @@ def pagina_analises(df: pd.DataFrame):
     atraso_df = analyze_delay(df)
     pares_df = analyze_par_impar(df)
 
-    # remove índice numérico antes de mostrar
-    freq_df = freq_df.reset_index(drop=True)
-    atraso_df = atraso_df.reset_index(drop=True)
-    if pares_df is not None and not pares_df.empty:
-        pares_df = pares_df.reset_index(drop=True)
-
     col1, col2 = st.columns(2)
 
     with col1:
         st.subheader("Frequência das dezenas")
-        st.dataframe(freq_df, width="stretch")
+        st.dataframe(freq_df, width="stretch", hide_index=True)
         chart_data = freq_df.set_index("numero")["frequencia"]
         st.bar_chart(chart_data)
 
     with col2:
         st.subheader("Atraso das dezenas")
-        st.dataframe(atraso_df, width="stretch")
+        st.dataframe(atraso_df, width="stretch", hide_index=True)
 
     st.subheader("Distribuição de pares x ímpares")
     if pares_df is not None and not pares_df.empty:
-        st.dataframe(pares_df, width="stretch")
+        st.dataframe(pares_df, width="stretch", hide_index=True)
     else:
         st.info("Não foi possível calcular pares x ímpares para o histórico atual.")
+
 
 
 
