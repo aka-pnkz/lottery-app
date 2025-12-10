@@ -153,13 +153,20 @@ def gerar_jogos(
 ) -> pd.DataFrame:
     jogos = []
 
-    if freq_df is not None and not freq_df.empty and "dezena" in freq_df.columns:
+    # só usa freq_df se for DataFrame válido COM coluna 'dezena'
+    if (
+        isinstance(freq_df, pd.DataFrame)
+        and not freq_df.empty
+        and "dezena" in freq_df.columns
+        and "frequencia" in freq_df.columns
+    ):
         freq_sorted = freq_df.sort_values("frequencia", ascending=False)
         quentes = freq_sorted["dezena"].tolist()[:20]
         frias = freq_sorted["dezena"].tolist()[-20:]
     else:
         quentes = []
         frias = []
+
 
     for i in range(1, qtd_jogos + 1):
         if estrategia == "aleatorio_puro":
