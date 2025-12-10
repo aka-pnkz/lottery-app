@@ -51,14 +51,9 @@ def analyze_frequency(df_hist: pd.DataFrame) -> pd.DataFrame:
         return pd.DataFrame()
 
     df_melt = df_hist.melt(value_vars=dezenas_cols, value_name="dezena")
-    if "dezena" not in df_melt.columns:
-        st.error(f"Coluna 'dezena' não existe após melt. Colunas: {list(df_melt.columns)}")
+    if df_melt.empty:
+        st.warning("Nenhuma dezena válida após limpeza dos dados.")
         return pd.DataFrame()
-
-    df_melt = df_melt.dropna(subset=["dezena"])
-    df_melt["dezena"] = df_melt["dezena"].astype(str).str.strip()
-    df_melt = df_melt[df_melt["dezena"].str.fullmatch(r"\d+")]
-    df_melt["dezena"] = df_melt["dezena"].astype(int)
 
     freq = (
         df_melt["dezena"]
@@ -68,6 +63,7 @@ def analyze_frequency(df_hist: pd.DataFrame) -> pd.DataFrame:
         .rename(columns={"index": "dezena", "dezena": "frequencia"})
     )
     return freq.sort_values("dezena")
+
 
 
 def analyze_delay(df_hist: pd.DataFrame) -> pd.DataFrame:
