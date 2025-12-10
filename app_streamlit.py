@@ -27,18 +27,27 @@ def load_data() -> pd.DataFrame:
 # ---------------- FUNÇÕES DE ANÁLISE ----------------
 
 def _cols_dezenas(df: pd.DataFrame) -> list:
-    """Retorna as colunas de dezenas no padrão dezena1, dezena2..."""
+    # se suas colunas são exatamente dezena1, dezena2, ..., force explicitamente
     return [c for c in df.columns if c.lower().startswith("dezena")]
-
+    # ou, se souber o nome exato:
+    # return ["dezena1", "dezena2", "dezena3", "dezena4", "dezena5", "dezena6"]
 
 def analyze_frequency(df_hist: pd.DataFrame) -> pd.DataFrame:
     if df_hist.empty:
         return pd.DataFrame()
 
     dezenas_cols = _cols_dezenas(df_hist)
+    if not dezenas_cols:
+        st.error(f"Nenhuma coluna de dezenas encontrada. Colunas do histórico: {list(df_hist.columns)}")
+        return pd.DataFrame()
+
+    # derrete apenas as colunas de dezenas em uma coluna chamada 'dezena'
     df_melt = df_hist.melt(value_vars=dezenas_cols, value_name="dezena")
 
-    # Remove linhas vazias e converte só valores simples
+    if "dezena" not in df_melt.columns:
+        st.error(f"Coluna 'dezena' não existe após melt. Colunas: {list(df_melt.columns)}")
+        return pd.DataFrame()
+
     df_melt = df_melt.dropna(subset=["dezena"])
     df_melt["dezena"] = df_melt["dezena"].astype(str).str.strip()
     df_melt = df_melt[df_melt["dezena"].str.fullmatch(r"\d+")]
@@ -51,7 +60,9 @@ def analyze_frequency(df_hist: pd.DataFrame) -> pd.DataFrame:
         .reset_index()
         .rename(columns={"index": "dezena", "dezena": "frequencia"})
     )
+
     return freq.sort_values("dezena")
+
 
 
 
