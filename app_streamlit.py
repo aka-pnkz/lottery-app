@@ -498,288 +498,117 @@ with st.sidebar:
         ["Gerar jogos", "Análises estatísticas"],
     )
 
-    if pagina == "Gerar jogos":
-        estrategia = st.selectbox(
-            "Estratégia",
-            [
-                "Aleatório puro",
-                "Balanceado par/ímpar",
-                "Setorial (faixas)",
-                "Quentes/Frias/Mix",
-                "Sem sequências longas",
-                "Wheeling simples (base fixa)",
-            ],
+if pagina == "Gerar jogos":
+    explicacoes = {
+        "Aleatório puro": (
+            "Sorteia dezenas totalmente aleatórias entre 1 e 60, "
+            "alinhado ao fato de que todas as combinações têm a mesma chance."
+        ),
+        "Balanceado par/ímpar": (
+            "Tenta manter distribuições como 3–3 ou 4–2 de pares/ímpares, "
+            "evitando padrões extremos (tudo par ou tudo ímpar)."
+        ),
+        "Setorial (faixas)": (
+            "Distribui dezenas entre as faixas 1–20, 21–40 e 41–60, "
+            "evitando concentrar todos os números em um único trecho."
+        ),
+        "Quentes/Frias/Mix": (
+            "Combina dezenas mais sorteadas (quentes), mais atrasadas (frias) e neutras, "
+            "usando o histórico apenas como referência."
+        ),
+        "Sem sequências longas": (
+            "Rejeita jogos com muitas dezenas consecutivas (por exemplo 10–11–12–13), "
+            "padrão que muitos apostadores preferem evitar."
+        ),
+        "Wheeling simples (base fixa)": (
+            "Gera combinações de 6 dezenas dentro de uma base fixa, "
+            "formando um mini-fechamento com melhor cobertura daquele conjunto."
+        ),
+    }
+
+    st.info(explicacoes.get(estrategia, ""))
+
+    # duas colunas só para histórico e parâmetros
+    col1, col2 = st.columns([2, 1])
+
+    with col1:
+        st.subheader("Histórico carregado")
+        st.write(
+            f"Total de concursos: **{len(df_concursos)}** "
+            f"(de {df_concursos['data'].min().date()} até {df_concursos['data'].max().date()})"
         )
 
-        qtd_jogos = st.number_input(
-            "Quantidade de jogos",
-            min_value=1,
-            max_value=200,
-            value=10,
-            step=1,
-        )
-
-        tam_jogo = st.slider(
-            "Dezenas por jogo",
-            min_value=6,
-            max_value=15,
-            value=6,
-        )
-
-        if estrategia == "Sem sequências longas":
-            limite_seq = st.number_input(
-                "Máx. tamanho de sequência permitida",
-                min_value=2,
-                max_value=6,
-                value=3,
-            )
-        else:
-            limite_seq = 3
+    with col2:
+        st.subheader("Parâmetros selecionados")
+        st.write(f"- Estratégia: **{estrategia}**")
+        st.write(f"- Jogos: **{qtd_jogos}**")
+        st.write(f"- Dezenas por jogo: **{tam_jogo}**")
 
         if estrategia == "Quentes/Frias/Mix":
-            q_quentes = st.number_input("Qtd. quentes", 0, 6, 3)
-            q_frias = st.number_input("Qtd. frias", 0, 6, 2)
-            q_neutras = st.number_input("Qtd. neutras", 0, 6, 1)
-        else:
-            q_quentes, q_frias, q_neutras = 3, 2, 1
-
-        # -----------------------
-        # CONTROLES DA BASE (WHEELING)
-        # -----------------------
-        if estrategia == "Wheeling simples (base fixa)":
-            modo_base = st.selectbox(
-                "Modo da base de dezenas",
-                [
-                    "Manual",
-                    "Mais sorteados (quentes)",
-                    "Mais atrasados (frios)",
-                    "Mix quentes+frios",
-                ],
-                key="modo_base_wheeling",
-            )
-
-            qtd_base = st.number_input(
-                "Quantidade de dezenas na base",
-                min_value=6,
-                max_value=25,
-                value=12,
-                step=1,
-                help=(
-                    "Define quantos números a base terá para o wheeling. "
-                    "Bases entre 10 e 20 dezenas são mais comuns."
-                ),
-                key="qtd_base_wheeling",
-            )
-
-            if "base_wheeling_value" not in st.session_state:
-                st.session_state.base_wheeling_value = "1,3,5,7,9,11,13,15,17,19"
-
-            if st.button("Gerar base sugerida"):
-                st.session_state["__gerar_base_modo"] = st.session_state.modo_base_wheeling
-                st.session_state["__gerar_base_qtd"] = int(st.session_state.qtd_base_wheeling)
-
-            base_str = st.text_input(
-                "Base de dezenas",
-                key="base_wheeling",
-                value=st.session_state.base_wheeling_value,
-                disabled=(modo_base != "Manual"),
-                help=(
-                    "No modo Manual, informe de 6 a ~20 dezenas separadas por vírgula, "
-                    "por exemplo: 1,3,5,7,9,11,13,15,17,19. "
-                    "Nos outros modos, a base é preenchida automaticamente pelas análises."
-                ),
-            )
-
-            if modo_base == "Manual":
-                st.session_state.base_wheeling_value = base_str
-        else:
-            base_str = st.session_state.get(
-                "base_wheeling_value",
-                "1,3,5,7,9,11,13,15,17,19",
-            )
-
-        st.markdown("---")
-        gerar = st.button("Gerar jogos agora", type="primary")
-
-    else:
-        estrategia = None
-        qtd_jogos = tam_jogo = limite_seq = 0
-        q_quentes = q_frias = q_neutras = 0
-        base_str = ""
-        gerar = False
-
-
-# ==========================
-# CORPO PRINCIPAL
-# ==========================
-st.title("Gerador e Analisador da Mega-Sena")
-
-st.markdown(
-    "Ferramenta para estudo estatístico e organização de jogos da Mega-Sena. "
-    "Todas as estratégias e análises são descritivas: não aumentam a chance "
-    "matemática de acerto, apenas ajudam a evitar padrões extremos e entender o histórico."
-)
-
-try:
-    df_concursos = carregar_concursos(CSV_PATH)
-    freq_df = calcular_frequencias(df_concursos)
-
-    # Geração automática da base do wheeling (se solicitado)
-    if (
-        pagina == "Gerar jogos"
-        and estrategia == "Wheeling simples (base fixa)"
-        and "__gerar_base_modo" in st.session_state
-    ):
-        atraso_df_local = calcular_atraso(freq_df, df_concursos)
-        modo = st.session_state["__gerar_base_modo"]
-        qtd = int(st.session_state.get("__gerar_base_qtd", 12))
-
-        base_dezenas_auto: list[int] = []
-
-        if modo == "Mais sorteados (quentes)":
-            base_dezenas_auto = (
-                freq_df.sort_values("frequencia", ascending=False)["dezena"]
-                .head(qtd)
-                .tolist()
-            )
-        elif modo == "Mais atrasados (frios)":
-            base_dezenas_auto = (
-                atraso_df_local.sort_values("atraso_atual", ascending=False)["dezena"]
-                .head(qtd)
-                .tolist()
-            )
-        elif modo == "Mix quentes+frios":
-            q_quentes_base = max(3, qtd // 2)
-            q_frias_base = max(0, qtd - q_quentes_base)
-
-            quentes_base = (
-                freq_df.sort_values("frequencia", ascending=False)["dezena"]
-                .head(q_quentes_base)
-                .tolist()
-            )
-            frias_base = (
-                atraso_df_local.sort_values("atraso_atual", ascending=False)["dezena"]
-                .head(q_frias_base)
-                .tolist()
-            )
-            base_dezenas_auto = sorted(set(quentes_base + frias_base))[:qtd]
-
-        if base_dezenas_auto:
-            st.session_state.base_wheeling_value = ",".join(str(d) for d in base_dezenas_auto)
-
-    if pagina == "Gerar jogos":
-        explicacoes = {
-            "Aleatório puro": (
-                "Sorteia dezenas totalmente aleatórias entre 1 e 60, "
-                "alinhado ao fato de que todas as combinações têm a mesma chance."
-            ),
-            "Balanceado par/ímpar": (
-                "Tenta manter distribuições como 3–3 ou 4–2 de pares/ímpares, "
-                "evitando padrões extremos (tudo par ou tudo ímpar)."
-            ),
-            "Setorial (faixas)": (
-                "Distribui dezenas entre as faixas 1–20, 21–40 e 41–60, "
-                "evitando concentrar todos os números em um único trecho."
-            ),
-            "Quentes/Frias/Mix": (
-                "Combina dezenas mais sorteadas (quentes), mais atrasadas (frias) e neutras, "
-                "usando o histórico apenas como referência."
-            ),
-            "Sem sequências longas": (
-                "Rejeita jogos com muitas dezenas consecutivas (por exemplo 10–11–12–13), "
-                "padrão que muitos apostadores preferem evitar."
-            ),
-            "Wheeling simples (base fixa)": (
-                "Gera combinações de 6 dezenas dentro de uma base fixa, "
-                "formando um mini-fechamento com melhor cobertura daquele conjunto."
-            ),
-        }
-
-        st.info(explicacoes.get(estrategia, ""))
-
-        col1, col2 = st.columns([2, 1])
-
-        with col1:
-            st.subheader("Histórico carregado")
             st.write(
-                f"Total de concursos: **{len(df_concursos)}** "
-                f"(de {df_concursos['data'].min().date()} até {df_concursos['data'].max().date()})"
+                f"- Mix: **{q_quentes} quentes, {q_frias} frias, {q_neutras} neutras**"
             )
+        if estrategia == "Sem sequências longas":
+            st.write(f"- Máx. sequência: **{limite_seq}** dezenas seguidas")
+        if estrategia == "Wheeling simples (base fixa)":
+            st.write(f"- Base atual: `{st.session_state.get('base_wheeling_value', '')}`")
 
-        with col2:
-            st.subheader("Parâmetros selecionados")
-            st.write(f"- Estratégia: **{estrategia}**")
-            st.write(f"- Jogos: **{qtd_jogos}**")
-            st.write(f"- Dezenas por jogo: **{tam_jogo}**")
-
-            if estrategia == "Quentes/Frias/Mix":
-                st.write(
-                    f"- Mix: **{q_quentes} quentes, {q_frias} frias, {q_neutras} neutras**"
+    # ---- BLOCOS DE JOGOS (abaixo das duas colunas, centralizado) ----
+    if gerar:
+        if estrategia == "Aleatório puro":
+            jogos = gerar_aleatorio_puro(qtd_jogos, tam_jogo)
+        elif estrategia == "Balanceado par/ímpar":
+            jogos = gerar_balanceado_par_impar(qtd_jogos, tam_jogo)
+        elif estrategia == "Setorial (faixas)":
+            jogos = gerar_setorial(qtd_jogos, tam_jogo)
+        elif estrategia == "Quentes/Frias/Mix":
+            jogos = gerar_quentes_frias_mix(
+                qtd_jogos=qtd_jogos,
+                tam_jogo=tam_jogo,
+                freq_df=freq_df,
+                proporcao=(q_quentes, q_frias, q_neutras),
+            )
+        elif estrategia == "Sem sequências longas":
+            jogos = gerar_sem_sequencias(
+                qtd_jogos=qtd_jogos,
+                tam_jogo=tam_jogo,
+                limite_sequencia=limite_seq,
+            )
+        elif estrategia == "Wheeling simples (base fixa)":
+            try:
+                base_texto = st.session_state.get("base_wheeling_value", "")
+                base_dezenas = [
+                    int(x.strip())
+                    for x in str(base_texto).split(",")
+                    if x.strip().isdigit()
+                ]
+                jogos = gerar_wheeling_simples(
+                    base_dezenas=base_dezenas,
+                    max_jogos=qtd_jogos,
                 )
-            if estrategia == "Sem sequências longas":
-                st.write(f"- Máx. sequência: **{limite_seq}** dezenas seguidas")
-            if estrategia == "Wheeling simples (base fixa)":
-                st.write(f"- Base atual: `{st.session_state.get('base_wheeling_value', '')}`")
+            except Exception:
+                jogos = []
+        else:
+            jogos = []
 
-            if gerar:
-                if estrategia == "Aleatório puro":
-                    jogos = gerar_aleatorio_puro(qtd_jogos, tam_jogo)
-                elif estrategia == "Balanceado par/ímpar":
-                    jogos = gerar_balanceado_par_impar(qtd_jogos, tam_jogo)
-                elif estrategia == "Setorial (faixas)":
-                    jogos = gerar_setorial(qtd_jogos, tam_jogo)
-                elif estrategia == "Quentes/Frias/Mix":
-                    jogos = gerar_quentes_frias_mix(
-                        qtd_jogos=qtd_jogos,
-                        tam_jogo=tam_jogo,
-                        freq_df=freq_df,
-                        proporcao=(q_quentes, q_frias, q_neutras),
-                    )
-                elif estrategia == "Sem sequências longas":
-                    jogos = gerar_sem_sequencias(
-                        qtd_jogos=qtd_jogos,
-                        tam_jogo=tam_jogo,
-                        limite_sequencia=limite_seq,
-                    )
-                elif estrategia == "Wheeling simples (base fixa)":
-                    try:
-                        base_texto = st.session_state.get("base_wheeling_value", "")
-                        base_dezenas = [
-                            int(x.strip())
-                            for x in str(base_texto).split(",")
-                            if x.strip().isdigit()
-                        ]
-                        jogos = gerar_wheeling_simples(
-                            base_dezenas=base_dezenas,
-                            max_jogos=qtd_jogos,
-                        )
-                    except Exception:
-                        jogos = []
-                else:
-                    jogos = []
+        st.markdown("### Jogos gerados")
 
-                st.markdown("### Jogos gerados")
-                if not jogos:
-                    st.warning("Nenhum jogo gerado. Verifique os parâmetros.")
-                else:
-                    # Centraliza a lista de jogos em um grid 1-2-1
-                    col_left, col_center, col_right = st.columns([1, 2, 1])
+        if not jogos:
+            st.warning("Nenhum jogo gerado. Verifique os parâmetros.")
+        else:
+            # linha própria de 3 colunas; usamos só a central
+            col_left, col_center, col_right = st.columns([1, 2, 1])
 
-                    with col_center:
-                        for i, jogo in enumerate(jogos, start=1):
-                            st.code(f"Jogo {i:02d}: {formatar_jogo(jogo)}")
+            with col_center:
+                for i, jogo in enumerate(jogos, start=1):
+                    st.code(f"Jogo {i:02d}: {formatar_jogo(jogo)}")
 
-                        jogos_df = pd.DataFrame(
-                            jogos,
-                            columns=[f"d{i}" for i in range(1, len(jogos[0]) + 1)],
-                        )
-                        csv_data = jogos_df.to_csv(index=False, sep=";").encode("utf-8")
-                        st.download_button(
-                            label="Baixar jogos em CSV",
-                            data=csv_data,
-                            file_name=f"jogos_megasena_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-                            mime="text/csv",
-                        )
+                jogos_df = pd.DataFrame(
+                    jogos,
+                    columns=[f"d{i}" for i in range(1, len(jogos[0]) + 1)],
+                )
+                csv_data = jogos_df.to_csv
+
 
     else:
         pagina_analises(df_concursos, freq_df)
