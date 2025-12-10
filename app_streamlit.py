@@ -41,16 +41,20 @@ def _cols_dezenas(df: pd.DataFrame) -> list:
 
 
 def analyze_frequency(df_hist: pd.DataFrame) -> pd.DataFrame:
-    """Frequência de cada dezena no histórico usando dezena1..dezena6. [file:493]"""
     if df_hist.empty:
         return pd.DataFrame()
 
+    st.write("Colunas do histórico:", list(df_hist.columns))
+
     dezenas_cols = _cols_dezenas(df_hist)
+    st.write("Colunas usadas como dezenas:", dezenas_cols)
+
     if not dezenas_cols:
         st.error(f"Nenhuma coluna de dezenas encontrada. Colunas: {list(df_hist.columns)}")
         return pd.DataFrame()
 
     df_melt = df_hist.melt(value_vars=dezenas_cols, value_name="dezena")
+    st.write("Sample melt:", df_melt.head())
 
     if "dezena" not in df_melt.columns:
         st.error(f"Coluna 'dezena' não existe após melt. Colunas: {list(df_melt.columns)}")
@@ -69,6 +73,7 @@ def analyze_frequency(df_hist: pd.DataFrame) -> pd.DataFrame:
         .rename(columns={"index": "dezena", "dezena": "frequencia"})
     )
     return freq.sort_values("dezena")
+
 
 
 def analyze_delay(df_hist: pd.DataFrame) -> pd.DataFrame:
