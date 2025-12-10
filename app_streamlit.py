@@ -6,7 +6,7 @@ from pathlib import Path
 
 # ---------------- CONFIGURAÇÕES BÁSICAS ----------------
 
-HIST_CSV_PATH = Path("historico_mega_sena.csv")  # nome do seu CSV
+HIST_CSV_PATH = Path("historico_mega_sena.csv")  # seu CSV de histórico
 
 
 # ---------------- FUNÇÕES DE DADOS ----------------
@@ -14,13 +14,12 @@ HIST_CSV_PATH = Path("historico_mega_sena.csv")  # nome do seu CSV
 def load_data() -> pd.DataFrame:
     """
     Carrega histórico da Mega-Sena de um CSV separado por ';'.
-    Espera colunas: concurso, data, dezena1..dezena6.
+    Espera colunas: concurso, data, dezena1..dezena6. [file:493]
     """
     if not HIST_CSV_PATH.exists():
         raise FileNotFoundError(f"Arquivo {HIST_CSV_PATH} não encontrado.")
 
     df = pd.read_csv(HIST_CSV_PATH, sep=";")
-    # garante que os nomes das colunas estão padronizados
     df = df.rename(columns={
         "concurso": "concurso",
         "data": "data",
@@ -37,20 +36,20 @@ def load_data() -> pd.DataFrame:
 # ---------------- FUNÇÕES DE ANÁLISE ----------------
 
 def _cols_dezenas(df: pd.DataFrame) -> list:
-    """Retorna as colunas de dezenas no padrão dezena1, dezena2..."""
+    """Colunas de dezenas: dezena1..dezena6."""
     return [c for c in df.columns if c.lower().startswith("dezena")]
 
 
 def analyze_frequency(df_hist: pd.DataFrame) -> pd.DataFrame:
+    """Frequência de cada dezena no histórico usando dezena1..dezena6. [file:493]"""
     if df_hist.empty:
         return pd.DataFrame()
 
     dezenas_cols = _cols_dezenas(df_hist)
     if not dezenas_cols:
-        st.error(f"Nenhuma coluna de dezenas encontrada. Colunas do histórico: {list(df_hist.columns)}")
+        st.error(f"Nenhuma coluna de dezenas encontrada. Colunas: {list(df_hist.columns)}")
         return pd.DataFrame()
 
-    # derrete apenas as colunas dezena1..dezena6 em uma coluna chamada 'dezena'
     df_melt = df_hist.melt(value_vars=dezenas_cols, value_name="dezena")
 
     if "dezena" not in df_melt.columns:
@@ -72,12 +71,8 @@ def analyze_frequency(df_hist: pd.DataFrame) -> pd.DataFrame:
     return freq.sort_values("dezena")
 
 
-
 def analyze_delay(df_hist: pd.DataFrame) -> pd.DataFrame:
-    """
-    Calcula atraso (em concursos) de cada dezena.
-    Considera o índice do DataFrame como ordem dos concursos.
-    """
+    """Atraso (em concursos) de cada dezena. [file:493]"""
     if df_hist.empty:
         return pd.DataFrame()
 
@@ -88,19 +83,14 @@ def analyze_delay(df_hist: pd.DataFrame) -> pd.DataFrame:
 
     for dez in range(1, 61):
         apareceu_em = df[df[dezenas_cols].eq(dez).any(axis=1)].index
-        if len(apareceu_em) == 0:
-            atraso = None
-        else:
-            atraso = ultima_linha - apareceu_em.max()
+        atraso = None if len(apareceu_em) == 0 else ultima_linha - apareceu_em.max()
         registros.append({"dezena": dez, "atraso": atraso})
 
     return pd.DataFrame(registros).sort_values("dezena")
 
 
 def analyze_par_impar(df_hist: pd.DataFrame) -> pd.DataFrame:
-    """
-    Calcula distribuição par/ímpar por concurso e frequência de cada composição.
-    """
+    """Distribuição de pares/ímpares por concurso. [file:493]"""
     if df_hist.empty:
         return pd.DataFrame()
 
@@ -124,10 +114,7 @@ def analyze_par_impar(df_hist: pd.DataFrame) -> pd.DataFrame:
 # ---------------- FUNÇÕES DE PREÇO ----------------
 
 def preco_por_jogo(dezenas_por_jogo: int) -> float:
-    """
-    Retorna preço de um jogo da Mega-Sena conforme quantidade de dezenas.
-    Tabela aproximada. [web:443]
-    """
+    """Preço aproximado conforme nº de dezenas. [web:443]"""
     tabela = {
         6: 5.00,
         7: 35.00,
@@ -384,7 +371,6 @@ Todas as análises são estatísticas descritivas do passado e não aumentam mat
         except Exception as e:
             st.error(f"Erro ao calcular distribuição par/ímpar: {e}")
 
-    # FAIXAS
     with aba_faixas:
         st.subheader("Distribuição por faixas")
         st.info("Mostra como as dezenas se distribuem entre 1–20, 21–40 e 41–60. [web:322]")
@@ -409,8 +395,6 @@ Todas as análises são estatísticas descritivas do passado e não aumentam mat
                 st.dataframe(faixas_df, width="stretch")
         except Exception as e:
             st.error(f"Erro ao calcular distribuição por faixas: {e}")
-
-
 
 
 # ---------------- PÁGINA: SOBRE ----------------
