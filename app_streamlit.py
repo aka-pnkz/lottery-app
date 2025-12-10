@@ -390,7 +390,7 @@ def pagina_analises(df_concursos: pd.DataFrame, freq_df: pd.DataFrame) -> None:
             st.markdown("#### Ordenado por frequência")
             st.dataframe(
                 atraso_df.sort_values("frequencia", ascending=False).reset_index(drop=True),
-                use_container_width=True,
+                width="stretch",
                 height=400,
                 hide_index=True,
             )
@@ -401,7 +401,7 @@ def pagina_analises(df_concursos: pd.DataFrame, freq_df: pd.DataFrame) -> None:
                 atraso_df.sort_values(
                     ["atraso_atual", "frequencia"], ascending=[False, False]
                 ).reset_index(drop=True),
-                use_container_width=True,
+                width="stretch",
                 height=400,
                 hide_index=True,
             )
@@ -418,16 +418,13 @@ def pagina_analises(df_concursos: pd.DataFrame, freq_df: pd.DataFrame) -> None:
             "baixos (1–30) e altos (31–60) saíram."
         )
 
-        st.markdown("#### Padrões mais comuns de pares/ímpares")
-        st.dataframe(dist_par_impar, use_container_width=True, hide_index=True)
-
-        st.markdown("#### Padrões mais comuns de baixa/alta")
-        st.dataframe(dist_baixa_alta, use_container_width=True, hide_index=True)
+        st.dataframe(dist_par_impar, width="stretch", hide_index=True)
+        st.dataframe(dist_baixa_alta, width="stretch", hide_index=True)
 
         with st.expander("Ver tabela detalhada por concurso"):
             st.dataframe(
                 df_padroes.sort_values("concurso"),
-                use_container_width=True,
+                width="stretch",
                 hide_index=True,
             )
 
@@ -447,7 +444,7 @@ def pagina_analises(df_concursos: pd.DataFrame, freq_df: pd.DataFrame) -> None:
             st.markdown("#### Tabela por concurso")
             st.dataframe(
                 df_somas.sort_values("concurso").reset_index(drop=True),
-                use_container_width=True,
+                width="stretch",
                 height=400,
                 hide_index=True,
             )
@@ -456,7 +453,7 @@ def pagina_analises(df_concursos: pd.DataFrame, freq_df: pd.DataFrame) -> None:
             st.markdown("#### Distribuição por faixa de soma")
             st.dataframe(
                 dist_faixas,
-                use_container_width=True,
+                width="stretch",
                 height=400,
                 hide_index=True,
             )
@@ -483,11 +480,11 @@ def pagina_analises(df_concursos: pd.DataFrame, freq_df: pd.DataFrame) -> None:
 
         with col1:
             st.markdown("#### Pares mais frequentes")
-            st.dataframe(df_pares, use_container_width=True, height=400, hide_index=True)
+            st.dataframe(df_pares, width="stretch", height=400, hide_index=True)
 
         with col2:
             st.markdown("#### Trios mais frequentes")
-            st.dataframe(df_trios, use_container_width=True, height=400, hide_index=True)
+            st.dataframe(df_trios, width="stretch", height=400, hide_index=True)
 
 
 # ==========================
@@ -558,6 +555,7 @@ with st.sidebar:
                     "Mais atrasados (frios)",
                     "Mix quentes+frios",
                 ],
+                key="modo_base_wheeling",
             )
 
             qtd_base = st.number_input(
@@ -568,36 +566,31 @@ with st.sidebar:
                 step=1,
                 help=(
                     "Define quantos números a base terá para o wheeling. "
-                    "Bases entre 10 e 20 dezenas são mais comuns; "
-                    "bases muito grandes geram muitas combinações."
+                    "Bases entre 10 e 20 dezenas são mais comuns."
                 ),
+                key="qtd_base_wheeling",
             )
 
-            gerar_base = st.button("Gerar base sugerida")
+            if "base_wheeling" not in st.session_state:
+                st.session_state.base_wheeling = "1,3,5,7,9,11,13,15,17,19"
 
-            if gerar_base and modo_base != "Manual":
-                st.session_state["__gerar_base_modo"] = modo_base
-                st.session_state["__gerar_base_qtd"] = int(qtd_base)
-
-            base_default = st.session_state.get(
-                "__base_wheeling_sugerida",
-                "1,3,5,7,9,11,13,15,17,19",
-            )
+            if st.button("Gerar base sugerida"):
+                st.session_state["__gerar_base_modo"] = st.session_state.modo_base_wheeling
+                st.session_state["__gerar_base_qtd"] = int(st.session_state.qtd_base_wheeling)
 
             base_str = st.text_input(
                 "Base de dezenas",
-                base_default,
+                key="base_wheeling",
                 help=(
                     "Informe de 6 a ~20 dezenas separadas por vírgula, por exemplo: "
                     "1,3,5,7,9,11,13,15,17,19. "
-                    "Ou use o botão 'Gerar base sugerida' para preencher automaticamente "
-                    "com base nas análises (quentes, frios, mix)."
+                    "Ou use o botão 'Gerar base sugerida' para preencher automaticamente."
                 ),
             )
         else:
-            modo_base = "Manual"
-            qtd_base = 0
             base_str = ""
+            if "base_wheeling" not in st.session_state:
+                st.session_state.base_wheeling = "1,3,5,7,9,11,13,15,17,19"
 
         st.markdown("---")
         mostrar_frequencias = st.checkbox(
@@ -612,8 +605,6 @@ with st.sidebar:
         qtd_jogos = tam_jogo = limite_seq = 0
         q_quentes = q_frias = q_neutras = 0
         base_str = ""
-        modo_base = "Manual"
-        qtd_base = 0
         mostrar_frequencias = False
         gerar = False
 
@@ -674,9 +665,7 @@ try:
             base_dezenas_auto = sorted(set(quentes_base + frias_base))[:qtd]
 
         if base_dezenas_auto:
-            st.session_state["__base_wheeling_sugerida"] = ",".join(
-                str(d) for d in base_dezenas_auto
-            )
+            st.session_state.base_wheeling = ",".join(str(d) for d in base_dezenas_auto)
 
     if pagina == "Gerar jogos":
         explicacoes = {
@@ -719,7 +708,12 @@ try:
 
             if mostrar_frequencias:
                 st.subheader("Frequência das dezenas")
-                st.dataframe(freq_df, use_container_width=True, height=400, hide_index=True)
+                st.dataframe(
+                    freq_df,
+                    width="stretch",
+                    height=400,
+                    hide_index=True,
+                )
 
         with col2:
             st.subheader("Parâmetros selecionados")
@@ -734,11 +728,7 @@ try:
             if estrategia == "Sem sequências longas":
                 st.write(f"- Máx. sequência: **{limite_seq}** dezenas seguidas")
             if estrategia == "Wheeling simples (base fixa)":
-                base_atual = st.session_state.get(
-                    "__base_wheeling_sugerida",
-                    base_str or "1,3,5,7,9,11,13,15,17,19",
-                )
-                st.write(f"- Base sugerida/atual: `{base_atual}`")
+                st.write(f"- Base atual: `{st.session_state.base_wheeling}`")
 
             if gerar:
                 if estrategia == "Aleatório puro":
@@ -762,9 +752,7 @@ try:
                     )
                 elif estrategia == "Wheeling simples (base fixa)":
                     try:
-                        base_texto = st.session_state.get(
-                            "__base_wheeling_sugerida", base_str
-                        ) or base_str
+                        base_texto = st.session_state.get("base_wheeling", "")
                         base_dezenas = [
                             int(x.strip())
                             for x in str(base_texto).split(",")
