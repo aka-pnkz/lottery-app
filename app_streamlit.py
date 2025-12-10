@@ -42,19 +42,21 @@ def _cols_dezenas(df: pd.DataFrame) -> list:
 
 
 def analyze_frequency(df_hist: pd.DataFrame) -> pd.DataFrame:
-    """
-    Calcula a frequência de cada dezena no histórico.
-    Considera colunas que começam com 'dezena'.
-    """
     if df_hist.empty:
         return pd.DataFrame()
 
     dezenas_cols = _cols_dezenas(df_hist)
     if not dezenas_cols:
-        st.error(f"Nenhuma coluna de dezenas encontrada. Colunas: {list(df_hist.columns)}")
+        st.error(f"Nenhuma coluna de dezenas encontrada. Colunas do histórico: {list(df_hist.columns)}")
         return pd.DataFrame()
 
+    # derrete apenas as colunas dezena1..dezena6 em uma coluna chamada 'dezena'
     df_melt = df_hist.melt(value_vars=dezenas_cols, value_name="dezena")
+
+    if "dezena" not in df_melt.columns:
+        st.error(f"Coluna 'dezena' não existe após melt. Colunas: {list(df_melt.columns)}")
+        return pd.DataFrame()
+
     df_melt = df_melt.dropna(subset=["dezena"])
     df_melt["dezena"] = df_melt["dezena"].astype(str).str.strip()
     df_melt = df_melt[df_melt["dezena"].str.fullmatch(r"\d+")]
@@ -68,6 +70,7 @@ def analyze_frequency(df_hist: pd.DataFrame) -> pd.DataFrame:
         .rename(columns={"index": "dezena", "dezena": "frequencia"})
     )
     return freq.sort_values("dezena")
+
 
 
 def analyze_delay(df_hist: pd.DataFrame) -> pd.DataFrame:
@@ -382,12 +385,16 @@ Todas as análises são estatísticas descritivas do passado e não aumentam mat
             st.error(f"Erro ao calcular distribuição par/ímpar: {e}")
 
     with aba_faixas:
-        st.subheader("Distribuição por faixas")
-        st.info("Mostra como as dezenas se distribuem entre 1–20, 21–40 e 41–60. [web:322]")
-        try:
-            df_tmp = df_hist.copy()
-            dezenas_cols = _cols_dezenas(df_tmp)
-            df_melt = df_tmp.melt(value_vars=dezenas_cols, value_name="dezena")
+    st.subheader("Distribuição por faixas")
+    st.info("Mostra como as dezenas se distribuem entre 1–20, 21–40 e 41–60. [web:322]")
+    try:
+        df_tmp = df_hist.copy()
+        dezenas_cols = _cols_dezenas(df_tmp)
+        df_melt = df_tmp.melt(value_vars=dezenas_cols, value_name="dezena")
+
+        if "dezena" not in df_melt.columns:
+            st.error(f"Coluna 'dezena' não existe após melt. Colunas: {list(df_melt.columns)}")
+        else:
             df_melt = df_melt.dropna(subset=["dezena"])
             df_melt["dezena"] = df_melt["dezena"].astype(str).str.strip()
             df_melt = df_melt[df_melt["dezena"].str.fullmatch(r"\d+")]
@@ -397,10 +404,11 @@ Todas as análises são estatísticas descritivas do passado e não aumentam mat
                 bins=[0, 20, 40, 60],
                 labels=["1-20", "21-40", "41-60"],
             )
-            faixas_df = df_melt.groupby("faixa")["dezena"].count().reset_index(name="qtd")
+            faixas_df = df_melt.groupby("faixa", observed=False)["dezena"].count().reset_index(name="qtd")
             st.dataframe(faixas_df, width="stretch")
-        except Exception as e:
-            st.error(f"Erro ao calcular distribuição por faixas: {e}")
+    except Exception as e:
+        st.error(f"Erro ao calcular distribuição por faixas: {e}")
+
 
 
 # ---------------- PÁGINA: SOBRE ----------------
