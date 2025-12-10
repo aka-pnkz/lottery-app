@@ -1,14 +1,222 @@
 import streamlit as st
 import pandas as pd
-
-# IMPORTS DO PROJETO
-from analysis.frequency import analyze_frequency, analyze_delay, analyze_par_impar
-from analysis.data import load_data
-from analysis.jogos import gerar_jogos
-from analysis.custos import preco_por_jogo, custo_total
+import random
+from pathlib import Path
 
 
-# ---------------- PAGINA: GERAR JOGOS ----------------
+# ---------------- CONFIGURAÇÕES BÁSICAS ----------------
+
+HIST_CSV_PATH = Path("historico_mega_sena.csv")  # ajuste se quiser outro caminho
+
+
+# ---------------- FUNÇÕES DE DADOS ----------------
+
+def load_data() -> pd.DataFrame:
+    """
+    Carrega histórico da Mega-Sena de um CSV.
+    Espera colunas: concurso, data, d1..d6 (ou mais dezenas).
+    Se não encontrar o arquivo, devolve DataFrame vazio.
+    """
+    if not HIST_CSV_PATH.exists():
+        return pd.DataFrame()
+
+    df = pd.read_csv(HIST_CSV_PATH)
+    return df
+
+
+# ---------------- FUNÇÕES DE ANÁLISE ----------------
+
+def analyze_frequency(df_hist: pd.DataFrame) -> pd.DataFrame:
+    """
+    Calcula a frequência de cada dezena no histórico.
+    Considera colunas que começam com 'd'.
+    """
+    if df_hist.empty:
+        return pd.DataFrame()
+
+    dezenas_cols = [c for c in df_hist.columns if c.startswith("d")]
+    df_melt = df_hist.melt(value_vars=dezenas_cols, value_name="dezena")
+    freq = df_melt["dezena"].value_counts().sort_index()
+    out = (
+        freq.reset_index()
+        .rename(columns={"index": "dezena", "dezena": "frequencia"})
+        .sort_values("dezena")
+    )
+    return out
+
+
+def analyze_delay(df_hist: pd.DataFrame) -> pd.DataFrame:
+    """
+    Calcula atraso (em concursos) de cada dezena.
+    Considera o índice do DataFrame como ordem dos concursos.
+    """
+    if df_hist.empty:
+        return pd.DataFrame()
+
+    df = df_hist.reset_index(drop=True)
+    dezenas_cols = [c for c in df.columns if c.startswith("d")]
+
+    ultima_linha = len(df) - 1
+    registros = []
+
+    for dezena in range(1, 61):
+        # última vez que apareceu
+        apareceu_em = df[df[dezenas_cols].eq(dezena).any(axis=1)].index
+        if len(apareceu_em) == 0:
+            atraso = None
+        else:
+            atraso = ultima_linha - apareceu_em.max()
+        registros.append({"dezena": dezena, "atraso": atraso})
+
+    out = pd.DataFrame(registros).sort_values("dezena")
+    return out
+
+
+def analyze_par_impar(df_hist: pd.DataFrame) -> pd.DataFrame:
+    """
+    Calcula distribuição par/ímpar por concurso e frequência de cada composição.
+    """
+    if df_hist.empty:
+        return pd.DataFrame()
+
+    dezenas_cols = [c for c in df_hist.columns if c.startswith("d")]
+    registros = []
+    for _, row in df_hist.iterrows():
+        dezenas = [int(row[c]) for c in dezenas_cols]
+        pares = sum(1 for d in dezenas if d % 2 == 0)
+        impares = len(dezenas) - pares
+        registros.append({"pares": pares, "impares": impares})
+
+    tmp = pd.DataFrame(registros)
+    out = (
+        tmp.value_counts(["pares", "impares"])
+        .reset_index(name="qtd")
+        .sort_values("qtd", ascending=False)
+    )
+    return out
+
+
+# ---------------- FUNÇÕES DE PREÇO ----------------
+
+def preco_por_jogo(dezenas_por_jogo: int) -> float:
+    """
+    Retorna preço de um jogo da Mega-Sena conforme quantidade de dezenas.
+    Tabela aproximada baseada em fontes públicas (pode sofrer reajustes). [web:443]
+    """
+    tabela = {
+        6: 5.00,
+        7: 35.00,
+        8: 140.00,
+        9: 378.00,
+        10: 945.00,
+        11: 2079.00,
+        12: 4158.00,
+        13: 7722.00,
+        14: 13513.50,
+        15: 22522.50,
+    }  # [web:443]
+
+    if dezenas_por_jogo not in tabela:
+        # fallback simples: sem preço conhecido
+        return 0.0
+    return tabela[dezenas_por_jogo]
+
+
+def custo_total(qtd_jogos: int, dezenas_por_jogo: int) -> float:
+    return qtd_jogos * preco_por_jogo(dezenas_por_jogo)
+
+
+# ---------------- GERADOR DE JOGOS ----------------
+
+def gerar_jogo_simples(dezenas_por_jogo: int) -> list[int]:
+    return sorted(random.sample(range(1, 61), dezenas_por_jogo))
+
+
+def gerar_jogos(
+    qtd_jogos: int,
+    dezenas_por_jogo: int,
+    estrategia: str,
+    freq_df: pd.DataFrame | None = None,
+) -> pd.DataFrame:
+    """
+    Gera jogos conforme a estratégia.
+    Implementações simples/ilustrativas.
+    """
+    jogos = []
+
+    # pré-processamento de frequências (para hot/cold)
+    if freq_df is not None and not freq_df.empty and "dezena" in freq_df.columns:
+        freq_sorted = freq_df.sort_values("frequencia", ascending=False)
+        quentes = freq_sorted["dezena"].tolist()[:20]
+        frias = freq_sorted["dezena"].tolist()[-20:]
+    else:
+        quentes = []
+        frias = []
+
+    for i in range(1, qtd_jogos + 1):
+        if estrategia == "aleatorio_puro":
+            dezenas = gerar_jogo_simples(dezenas_por_jogo)
+
+        elif estrategia == "balanceado_par_impar":
+            alvo_par = dezenas_por_jogo // 2
+            alvo_impar = dezenas_por_jogo - alvo_par
+            pares = random.sample([d for d in range(1, 61) if d % 2 == 0], alvo_par)
+            impares = random.sample([d for d in range(1, 61) if d % 2 != 0], alvo_impar)
+            dezenas = sorted(pares + impares)
+
+        elif estrategia == "faixas":
+            faixas = [range(1, 21), range(21, 41), range(41, 61)]
+            dezenas = []
+            while len(dezenas) < dezenas_por_jogo:
+                f = random.choice(faixas)
+                n = random.choice(list(f))
+                if n not in dezenas:
+                    dezenas.append(n)
+            dezenas = sorted(dezenas)
+
+        elif estrategia == "sem_sequencias":
+            while True:
+                dezenas = gerar_jogo_simples(dezenas_por_jogo)
+                if not any(
+                    dezenas[j] == dezenas[j - 1] + 1
+                    for j in range(1, len(dezenas))
+                ):
+                    break
+
+        elif estrategia == "hot" and quentes:
+            dezenas = sorted(random.sample(quentes, dezenas_por_jogo))
+
+        elif estrategia == "cold" and frias:
+            dezenas = sorted(random.sample(frias, dezenas_por_jogo))
+
+        elif estrategia == "hot_cold_misto" and quentes and frias:
+            qtd_hot = max(1, dezenas_por_jogo // 3)
+            qtd_cold = max(1, dezenas_por_jogo // 3)
+            qtd_rest = dezenas_por_jogo - qtd_hot - qtd_cold
+
+            escolha_hot = random.sample(quentes, min(qtd_hot, len(quentes)))
+            escolha_cold = random.sample(frias, min(qtd_cold, len(frias)))
+            restantes = [d for d in range(1, 61) if d not in escolha_hot + escolha_cold]
+            escolha_rest = random.sample(restantes, max(0, qtd_rest))
+            dezenas = sorted(escolha_hot + escolha_cold + escolha_rest)
+
+        else:
+            dezenas = gerar_jogo_simples(dezenas_por_jogo)
+
+        jogos.append({"jogo": i, "dezenas": dezenas})
+
+    # explode dezenas em colunas d1..dn
+    linhas = []
+    for row in jogos:
+        base = {"jogo": row["jogo"]}
+        for idx, d in enumerate(row["dezenas"], start=1):
+            base[f"d{idx}"] = d
+        linhas.append(base)
+
+    return pd.DataFrame(linhas)
+
+
+# ---------------- PÁGINA: GERAR JOGOS ----------------
 
 def pagina_gerar_jogos():
     st.header("Gerar jogos")
@@ -31,56 +239,24 @@ def pagina_gerar_jogos():
     ]
 
     with st.form("form_gerar_jogos"):
-        qtd_jogos = st.number_input(
-            "Quantidade de jogos",
-            min_value=1,
-            max_value=1000,
-            value=5,
-            step=1,
-        )
-        dezenas_por_jogo = st.number_input(
-            "Dezenas por jogo",
-            min_value=6,
-            max_value=20,
-            value=6,
-            step=1,
-        )
-        estrategia = st.selectbox(
-            "Estratégia",
-            estrategias_disponiveis,
-            index=0,
-        )
-        gerar_todas = st.checkbox(
-            "Gerar 1 jogo para cada estratégia acima",
-            value=False,
-        )
+        qtd_jogos = st.number_input("Quantidade de jogos", min_value=1, max_value=1000, value=5, step=1)
+        dezenas_por_jogo = st.number_input("Dezenas por jogo", min_value=6, max_value=15, value=6, step=1)
+        estrategia = st.selectbox("Estratégia", estrategias_disponiveis, index=0)
+        gerar_todas = st.checkbox("Gerar 1 jogo para cada estratégia acima", value=False)
 
         with st.expander("Entenda as estratégias"):
             st.markdown(
                 """
 **Importante:** todas as combinações têm a mesma probabilidade matemática.
-As estratégias abaixo só organizam os números de formas diferentes, para evitar padrões ruins e deixar o jogo mais estruturado, mas **não garantem prêmio**. [web:343][web:339]
+As estratégias abaixo só organizam os números de formas diferentes e não garantem prêmio. [web:343][web:339]
 
-- **aleatorio_puro**  
-  Gera dezenas totalmente aleatórias entre 1 e 60, sem nenhuma regra extra. [web:343]
-
-- **balanceado_par_impar**  
-  Mantém equilíbrio entre pares e ímpares (ex.: 3 pares e 3 ímpares em 6 dezenas), evitando combinações extremas raras. [web:317][web:320]
-
-- **faixas**  
-  Espalha as dezenas pelas faixas 1–20, 21–40 e 41–60 para cobrir melhor todo o intervalo de números. [web:319]
-
-- **sem_sequencias**  
-  Evita sequências longas de dezenas consecutivas (como 10–11–12–13), pouco comuns nos sorteios. [web:319]
-
-- **hot**  
-  Dá mais peso às dezenas que mais apareceram no histórico (“números quentes”), usando análise de frequência passada. [web:324][web:335]
-
-- **cold**  
-  Prioriza dezenas que saíram pouco ou estão há muito sem aparecer (“frias”), ideia ligada a atrasos. [web:323][web:326]
-
-- **hot_cold_misto**  
-  Mistura dezenas quentes, frias e neutras para formar jogos mais variados. [web:324]
+- **aleatorio_puro** – dezenas totalmente aleatórias entre 1 e 60. [web:343]  
+- **balanceado_par_impar** – mantém equilíbrio entre pares e ímpares. [web:317][web:320]  
+- **faixas** – distribui as dezenas em 1–20, 21–40 e 41–60. [web:319]  
+- **sem_sequencias** – evita sequências longas de dezenas consecutivas. [web:319]  
+- **hot** – prioriza dezenas mais frequentes no histórico. [web:322]  
+- **cold** – prioriza dezenas menos frequentes/atrasadas. [web:322][web:323]  
+- **hot_cold_misto** – mistura dezenas quentes, frias e neutras. [web:322]
                 """
             )
 
@@ -95,7 +271,6 @@ As estratégias abaixo só organizam os números de formas diferentes, para evit
 
     try:
         if gerar_todas:
-            # ignora qtd_jogos e gera 1 por estratégia
             linhas = []
             for nome_estrategia in estrategias_disponiveis:
                 df_tmp = gerar_jogos(
@@ -106,7 +281,6 @@ As estratégias abaixo só organizam os números de formas diferentes, para evit
                 )
                 df_tmp["estrategia"] = nome_estrategia
                 linhas.append(df_tmp)
-
             df_jogos = pd.concat(linhas, ignore_index=True)
         else:
             df_jogos = gerar_jogos(
@@ -119,28 +293,20 @@ As estratégias abaixo só organizam os números de formas diferentes, para evit
         st.error(f"Erro ao gerar jogos: {e}")
         return
 
-    # formata coluna do jogo
     if "jogo" in df_jogos.columns:
         df_jogos["jogo"] = df_jogos["jogo"].apply(lambda x: f"#{int(x)}")
 
     st.subheader("Jogos gerados")
     st.dataframe(df_jogos, use_container_width=True, hide_index=True)
 
-    # custo
     try:
         preco = preco_por_jogo(int(dezenas_por_jogo))
         qtd_para_preco = len(df_jogos) if gerar_todas else int(qtd_jogos)
         total = custo_total(qtd_para_preco, int(dezenas_por_jogo))
-        msg_preco = (
-            f"Preço por jogo: **R$ {preco:,.2f}**  |  "
-            f"Custo total: **R$ {total:,.2f}**"
-        )
-        st.info(msg_preco)
+        st.info(f"Preço por jogo: R$ {preco:,.2f} | Custo total: R$ {total:,.2f}")
     except Exception as e:
-        msg_erro = f"Não foi possível calcular o custo: {e}"
-        st.warning(msg_erro)
+        st.warning(f"Não foi possível calcular o custo: {e}")
 
-    # download
     csv = df_jogos.to_csv(index=False).encode("utf-8")
     st.download_button(
         label="Baixar jogos em CSV",
@@ -150,12 +316,11 @@ As estratégias abaixo só organizam os números de formas diferentes, para evit
     )
 
 
-# ---------------- PAGINA: ANALISES ----------------
+# ---------------- PÁGINA: ANÁLISES ----------------
 
 def pagina_analises():
     st.header("Análises estatísticas")
 
-    # carrega histórico
     try:
         df_hist = load_data()
     except Exception as e:
@@ -163,26 +328,18 @@ def pagina_analises():
         return
 
     if df_hist is None or df_hist.empty:
-        st.warning("Nenhum histórico carregado para análise.")
+        st.warning("Nenhum histórico carregado para análise (arquivo historico_mega_sena.csv não encontrado ou vazio).")
         return
 
     with st.expander("Entenda as análises"):
         st.markdown(
             """
-**Aviso importante:** todas as análises desta página são *estatísticas descritivas* sobre os sorteios passados.  
-Elas ajudam a visualizar padrões como frequência, atraso e equilíbrio entre pares/ímpares, mas **não aumentam matematicamente a chance de ganhar** em sorteios futuros. [web:343][web:339]
+Todas as análises são estatísticas descritivas do passado e não aumentam matematicamente a chance de ganhar. [web:343]
 
-- **Frequência das dezenas**  
-  Conta quantas vezes cada número já foi sorteado no histórico. [web:324][web:335]
-
-- **Atraso (delay) das dezenas**  
-  Mede há quantos concursos cada dezena não aparece, destacando dezenas “atrasadas”. [web:323][web:326]
-
-- **Distribuição par/ímpar**  
-  Mostra quais composições de pares e ímpares (3/3, 4/2, 5/1 etc.) aparecem com mais frequência. [web:317][web:320]
-
-- **Distribuição por faixas**  
-  Agrupa dezenas em intervalos (1–20, 21–40, 41–60) para ver como os resultados se espalham ao longo do volante. [web:319][web:328]
+- **Frequência das dezenas** – quantas vezes cada número já foi sorteado. [web:322]  
+- **Atraso (delay)** – há quantos concursos cada dezena não aparece. [web:323]  
+- **Distribuição par/ímpar** – quais composições de pares/ímpares ocorrem mais. [web:322]  
+- **Faixas** – como as dezenas se distribuem entre 1–20, 21–40, 41–60. [web:322]
             """
         )
 
@@ -190,52 +347,36 @@ Elas ajudam a visualizar padrões como frequência, atraso e equilíbrio entre p
         ["Frequência", "Atraso", "Par/Ímpar", "Faixas"]
     )
 
-    # FREQUÊNCIA
     with aba_freq:
         st.subheader("Frequência das dezenas")
-        st.info(
-            "Mostra quantas vezes cada dezena já foi sorteada no histórico, "
-            "ajudando a identificar números mais e menos frequentes. [web:324][web:335]"
-        )
+        st.info("Mostra quantas vezes cada dezena já foi sorteada no histórico. [web:322]")
         try:
             freq_df = analyze_frequency(df_hist)
             st.dataframe(freq_df, use_container_width=True)
         except Exception as e:
             st.error(f"Erro ao calcular frequência: {e}")
 
-    # ATRASO
     with aba_atraso:
         st.subheader("Atraso das dezenas")
-        st.info(
-            "Mostra há quantos concursos cada dezena não aparece, além de atrasos médios "
-            "e máximos, destacando dezenas consideradas 'atrasadas'. [web:323][web:326]"
-        )
+        st.info("Mostra há quantos concursos cada dezena não aparece. [web:323]")
         try:
             atraso_df = analyze_delay(df_hist)
             st.dataframe(atraso_df, use_container_width=True)
         except Exception as e:
             st.error(f"Erro ao calcular atraso: {e}")
 
-    # PAR / ÍMPAR
     with aba_par_impar:
         st.subheader("Distribuição par/ímpar")
-        st.info(
-            "Analisa quantos números pares e ímpares saem em cada sorteio, "
-            "mostrando quais composições aparecem com mais frequência. [web:317][web:320]"
-        )
+        st.info("Mostra as composições de pares e ímpares que mais ocorrem. [web:322]")
         try:
             par_impar_df = analyze_par_impar(df_hist)
             st.dataframe(par_impar_df, use_container_width=True)
         except Exception as e:
             st.error(f"Erro ao calcular distribuição par/ímpar: {e}")
 
-    # FAIXAS
     with aba_faixas:
         st.subheader("Distribuição por faixas")
-        st.info(
-            "Agrupa as dezenas em intervalos (1–20, 21–40, 41–60) e mostra "
-            "como os resultados se distribuem nessas faixas. [web:319][web:328]"
-        )
+        st.info("Mostra como as dezenas se distribuem entre 1–20, 21–40 e 41–60. [web:322]")
         try:
             df_tmp = df_hist.copy()
             dezenas_cols = [c for c in df_tmp.columns if c.startswith("d")]
@@ -245,22 +386,20 @@ Elas ajudam a visualizar padrões como frequência, atraso e equilíbrio entre p
                 bins=[0, 20, 40, 60],
                 labels=["1-20", "21-40", "41-60"],
             )
-            faixas_df = (
-                df_melt.groupby("faixa")["dezena"].count().reset_index(name="qtd")
-            )
+            faixas_df = df_melt.groupby("faixa")["dezena"].count().reset_index(name="qtd")
             st.dataframe(faixas_df, use_container_width=True)
         except Exception as e:
             st.error(f"Erro ao calcular distribuição por faixas: {e}")
 
 
-# ---------------- PAGINA: SOBRE ----------------
+# ---------------- PÁGINA: SOBRE ----------------
 
 def pagina_sobre():
     st.header("Sobre o projeto")
     st.markdown(
         """
 Aplicativo para estudo estatístico da Mega-Sena e geração de jogos com diferentes estratégias.  
-As análises são baseadas em dados históricos e servem apenas como apoio visual e educacional. [web:335]
+As análises usam dados históricos apenas para visualização e aprendizado. [web:322]
         """
     )
 
