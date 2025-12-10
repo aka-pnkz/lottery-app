@@ -28,7 +28,6 @@ def load_data() -> pd.DataFrame:
 # Funções auxiliares
 # --------------------------------------------------------------------------------------
 def tem_colunas_basicas(df: pd.DataFrame) -> bool:
-    # aceita "Dezena1"..."Dezena6"
     col_dezenas = [c for c in df.columns if c.lower().startswith("dezena")]
     return len(col_dezenas) >= 6
 
@@ -155,3 +154,85 @@ def pagina_gerar_jogos():
         msg_erro = f"Não foi possível calcular o custo: {e}"
         st.warning(msg_erro)
 
+    csv = df_jogos.to_csv(index=False).encode("utf-8")
+    st.download_button(
+        label="Baixar jogos em CSV",
+        data=csv,
+        file_name="jogos_mega_sena.csv",
+        mime="text/csv",
+    )
+
+
+def pagina_simulacao():
+    st.header("Simulação de probabilidades")
+
+    with st.form("form_simulacao"):
+        dezenas_por_jogo = st.number_input(
+            "Dezenas por jogo",
+            min_value=6,
+            max_value=20,
+            value=6,
+            step=1,
+        )
+        submitted = st.form_submit_button("Calcular probabilidade de Sena")
+
+    if not submitted:
+        return
+
+    try:
+        p = prob_sena(int(dezenas_por_jogo))
+        if p > 0:
+            msg = (
+                f"Probabilidade de acertar a **Sena** com "
+                f"{dezenas_por_jogo} dezenas em um único jogo:\n\n"
+                f"- Valor aproximado: **{p:.12f}**\n"
+                f"- Aproximadamente **1 em {1/p:,.0f}** combinações."
+            )
+            st.success(msg)
+        else:
+            st.warning("Probabilidade retornou 0. Verifique a função prob_sena.")
+    except Exception as e:
+        st.error(f"Erro ao calcular probabilidade: {e}")
+
+
+def main():
+    st.sidebar.title("Mega-Sena App")
+
+    pagina = st.sidebar.radio(
+        "Navegação",
+        ["Histórico", "Análises", "Gerar jogos", "Simulação"],
+        index=0,
+    )
+
+    try:
+        df = load_data()
+    except FileNotFoundError as e:
+        st.error(
+            "Arquivo de histórico não encontrado.\n\n"
+            "Confira se `data/mega_sena.csv` está presente no repositório.\n\n"
+            f"Detalhes: {e}"
+        )
+        df = pd.DataFrame()
+    except Exception as e:
+        st.error(f"Erro ao carregar dados: {e}")
+        df = pd.DataFrame()
+
+    if pagina == "Histórico":
+        pagina_historico(df)
+    elif pagina == "Análises":
+        pagina_analises(df)
+    elif pagina == "Gerar jogos":
+        pagina_gerar_jogos()
+    elif pagina == "Simulação":
+        pagina_simulacao()
+
+    st.markdown("---")
+    st.caption(
+        "App de estudo e entretenimento sobre Mega-Sena. "
+        "Probabilidades e custos são aproximações; "
+        "consulte sempre as regras e valores oficiais."
+    )
+
+
+if __name__ == "__main__":
+    main()
