@@ -168,7 +168,11 @@ def pagina_gerar_jogos():
         return
 
     st.subheader("Jogos gerados")
-    st.dataframe(df_jogos, width="stretch")
+
+    # renomeia coluna e esconde índice
+    df_view = df_jogos.rename(columns={"jogo": "Jogo #"})
+    st.dataframe(df_view, width="stretch", hide_index=True)
+
 
     try:
         preco = preco_por_jogo(int(dezenas_por_jogo))
