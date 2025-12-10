@@ -21,6 +21,26 @@ def pagina_gerar_jogos():
         freq_df = analyze_frequency(df_hist) if df_hist is not None and not df_hist.empty else None
     except Exception:
         freq_df = None
+import streamlit as st
+import pandas as pd
+
+from analysis.frequency import analyze_frequency, analyze_delay, analyze_par_impar
+from analysis.data import load_data
+from analysis.jogos import gerar_jogos
+from analysis.custos import preco_por_jogo, custo_total
+
+
+# ---------------- PAGINA: GERAR JOGOS ----------------
+
+def pagina_gerar_jogos():
+    st.header("Gerar jogos")
+
+    # carrega histórico para estratégias hot/cold
+    try:
+        df_hist = load_data()
+        freq_df = analyze_frequency(df_hist) if df_hist is not None and not df_hist.empty else None
+    except Exception:
+        freq_df = None
 
     estrategias_disponiveis = [
         "aleatorio_puro",
