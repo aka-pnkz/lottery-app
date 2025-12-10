@@ -6,32 +6,46 @@ from pathlib import Path
 
 # ---------------- CONFIGURAÇÕES BÁSICAS ----------------
 
-HIST_CSV_PATH = Path("historico_mega_sena.csv")  # ajuste se quiser outro caminho
+HIST_CSV_PATH = Path("historico_mega_sena.csv")  # nome do seu CSV
 
 
 # ---------------- FUNÇÕES DE DADOS ----------------
 
 def load_data() -> pd.DataFrame:
     """
-    Carrega histórico da Mega-Sena a partir da planilha Mega-Sena.xlsx
-    (aba 'MEGA SENA', colunas: Concurso, Data do Sorteio, Bola1..Bola6). [file:492]
+    Carrega histórico da Mega-Sena de um CSV separado por ';'.
+    Espera colunas: concurso, data, dezena1..dezena6.
     """
-    # se você já salvou como CSV, use pd.read_csv("historico_mega_sena.csv", sep=";")
-    df = pd.read_excel("Mega-Sena.xlsx", sheet_name="MEGA SENA")
-    # mantém só concurso, data e bolas
-    df = df[["Concurso", "Data do Sorteio", "Bola1", "Bola2", "Bola3", "Bola4", "Bola5", "Bola6"]]
+    if not HIST_CSV_PATH.exists():
+        raise FileNotFoundError(f"Arquivo {HIST_CSV_PATH} não encontrado.")
+
+    df = pd.read_csv(HIST_CSV_PATH, sep=";")
+    # garante que os nomes das colunas estão padronizados
+    df = df.rename(columns={
+        "concurso": "concurso",
+        "data": "data",
+        "dezena1": "dezena1",
+        "dezena2": "dezena2",
+        "dezena3": "dezena3",
+        "dezena4": "dezena4",
+        "dezena5": "dezena5",
+        "dezena6": "dezena6",
+    })
     return df
-
-
 
 
 # ---------------- FUNÇÕES DE ANÁLISE ----------------
 
 def _cols_dezenas(df: pd.DataFrame) -> list:
-    # colunas de dezenas são Bola1..Bola6 [file:492]
-    return [c for c in df.columns if c.lower().startswith("bola")]
+    """Retorna as colunas de dezenas no padrão dezena1, dezena2..."""
+    return [c for c in df.columns if c.lower().startswith("dezena")]
+
 
 def analyze_frequency(df_hist: pd.DataFrame) -> pd.DataFrame:
+    """
+    Calcula a frequência de cada dezena no histórico.
+    Considera colunas que começam com 'dezena'.
+    """
     if df_hist.empty:
         return pd.DataFrame()
 
@@ -42,6 +56,8 @@ def analyze_frequency(df_hist: pd.DataFrame) -> pd.DataFrame:
 
     df_melt = df_hist.melt(value_vars=dezenas_cols, value_name="dezena")
     df_melt = df_melt.dropna(subset=["dezena"])
+    df_melt["dezena"] = df_melt["dezena"].astype(str).str.strip()
+    df_melt = df_melt[df_melt["dezena"].str.fullmatch(r"\d+")]
     df_melt["dezena"] = df_melt["dezena"].astype(int)
 
     freq = (
@@ -54,9 +70,6 @@ def analyze_frequency(df_hist: pd.DataFrame) -> pd.DataFrame:
     return freq.sort_values("dezena")
 
 
-
-
-
 def analyze_delay(df_hist: pd.DataFrame) -> pd.DataFrame:
     """
     Calcula atraso (em concursos) de cada dezena.
@@ -67,20 +80,18 @@ def analyze_delay(df_hist: pd.DataFrame) -> pd.DataFrame:
 
     df = df_hist.reset_index(drop=True)
     dezenas_cols = _cols_dezenas(df)
-
     ultima_linha = len(df) - 1
     registros = []
 
-    for dezena in range(1, 61):
-        apareceu_em = df[df[dezenas_cols].eq(dezena).any(axis=1)].index
+    for dez in range(1, 61):
+        apareceu_em = df[df[dezenas_cols].eq(dez).any(axis=1)].index
         if len(apareceu_em) == 0:
             atraso = None
         else:
             atraso = ultima_linha - apareceu_em.max()
-        registros.append({"dezena": dezena, "atraso": atraso})
+        registros.append({"dezena": dez, "atraso": atraso})
 
-    out = pd.DataFrame(registros).sort_values("dezena")
-    return out
+    return pd.DataFrame(registros).sort_values("dezena")
 
 
 def analyze_par_impar(df_hist: pd.DataFrame) -> pd.DataFrame:
@@ -112,7 +123,7 @@ def analyze_par_impar(df_hist: pd.DataFrame) -> pd.DataFrame:
 def preco_por_jogo(dezenas_por_jogo: int) -> float:
     """
     Retorna preço de um jogo da Mega-Sena conforme quantidade de dezenas.
-    Tabela aproximada baseada em fontes públicas (pode sofrer reajustes). [web:443]
+    Tabela aproximada. [web:443]
     """
     tabela = {
         6: 5.00,
@@ -125,11 +136,8 @@ def preco_por_jogo(dezenas_por_jogo: int) -> float:
         13: 7722.00,
         14: 13513.50,
         15: 22522.50,
-    }  # [web:443]
-
-    if dezenas_por_jogo not in tabela:
-        return 0.0
-    return tabela[dezenas_por_jogo]
+    }
+    return tabela.get(dezenas_por_jogo, 0.0)
 
 
 def custo_total(qtd_jogos: int, dezenas_por_jogo: int) -> float:
@@ -148,10 +156,6 @@ def gerar_jogos(
     estrategia: str,
     freq_df: pd.DataFrame | None = None,
 ) -> pd.DataFrame:
-    """
-    Gera jogos conforme a estratégia.
-    Implementações simples/ilustrativas.
-    """
     jogos = []
 
     if freq_df is not None and not freq_df.empty and "dezena" in freq_df.columns:
@@ -212,16 +216,12 @@ def gerar_jogos(
         else:
             dezenas = gerar_jogo_simples(dezenas_por_jogo)
 
-        jogos.append({"jogo": i, "dezenas": dezenas})
+        linha = {"jogo": i}
+        for idx, d in enumerate(dezenas, start=1):
+            linha[f"dezena{idx}"] = d
+        jogos.append(linha)
 
-    linhas = []
-    for row in jogos:
-        base = {"jogo": row["jogo"]}
-        for idx, d in enumerate(row["dezenas"], start=1):
-            base[f"dezena{idx}"] = d
-        linhas.append(base)
-
-    return pd.DataFrame(linhas)
+    return pd.DataFrame(jogos)
 
 
 # ---------------- PÁGINA: GERAR JOGOS ----------------
@@ -389,6 +389,8 @@ Todas as análises são estatísticas descritivas do passado e não aumentam mat
             dezenas_cols = _cols_dezenas(df_tmp)
             df_melt = df_tmp.melt(value_vars=dezenas_cols, value_name="dezena")
             df_melt = df_melt.dropna(subset=["dezena"])
+            df_melt["dezena"] = df_melt["dezena"].astype(str).str.strip()
+            df_melt = df_melt[df_melt["dezena"].str.fullmatch(r"\d+")]
             df_melt["dezena"] = df_melt["dezena"].astype(int)
             df_melt["faixa"] = pd.cut(
                 df_melt["dezena"],
