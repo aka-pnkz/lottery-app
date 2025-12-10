@@ -10,18 +10,20 @@ def ensure_data_dir() -> None:
 
 def load_results() -> pd.DataFrame:
     """
-    Carrega o CSV histórico. Se estiver vazio, devolve DataFrame vazio
-    com colunas padrão.
+    Carrega o CSV histórico da Mega-Sena.
+    Trata arquivos vazios e encoding Latin-1 (padrão em arquivos da Caixa).
     """
     ensure_data_dir()
     if not CSV_PATH.exists():
         raise FileNotFoundError(f"Arquivo {CSV_PATH} não encontrado no repositório.")
 
     try:
-        df = pd.read_csv(CSV_PATH)
+        # arquivos baixados da Caixa costumam vir em Latin-1 / ISO-8859-1
+        df = pd.read_csv(CSV_PATH, encoding="latin1")
     except EmptyDataError:
         df = pd.DataFrame(
-            columns=["concurso", "data", "dezena1", "dezena2",
-                     "dezena3", "dezena4", "dezena5", "dezena6"]
+            columns=["Concurso", "Data Sorteio",
+                     "Dezena1", "Dezena2", "Dezena3",
+                     "Dezena4", "Dezena5", "Dezena6"]
         )
     return df
