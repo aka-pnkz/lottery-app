@@ -571,8 +571,9 @@ with st.sidebar:
                 key="qtd_base_wheeling",
             )
 
-            if "base_wheeling" not in st.session_state:
-                st.session_state.base_wheeling = "1,3,5,7,9,11,13,15,17,19"
+            # estado interno separado do widget
+            if "base_wheeling_value" not in st.session_state:
+                st.session_state.base_wheeling_value = "1,3,5,7,9,11,13,15,17,19"
 
             if st.button("Gerar base sugerida"):
                 st.session_state["__gerar_base_modo"] = st.session_state.modo_base_wheeling
@@ -581,16 +582,20 @@ with st.sidebar:
             base_str = st.text_input(
                 "Base de dezenas",
                 key="base_wheeling",
+                value=st.session_state.base_wheeling_value,
                 help=(
                     "Informe de 6 a ~20 dezenas separadas por vírgula, por exemplo: "
                     "1,3,5,7,9,11,13,15,17,19. "
                     "Ou use o botão 'Gerar base sugerida' para preencher automaticamente."
                 ),
             )
+            # sincroniza o que o usuário digitar com o estado interno
+            st.session_state.base_wheeling_value = base_str
         else:
-            base_str = ""
-            if "base_wheeling" not in st.session_state:
-                st.session_state.base_wheeling = "1,3,5,7,9,11,13,15,17,19"
+            base_str = st.session_state.get(
+                "base_wheeling_value",
+                "1,3,5,7,9,11,13,15,17,19",
+            )
 
         st.markdown("---")
         mostrar_frequencias = st.checkbox(
@@ -665,7 +670,7 @@ try:
             base_dezenas_auto = sorted(set(quentes_base + frias_base))[:qtd]
 
         if base_dezenas_auto:
-            st.session_state.base_wheeling = ",".join(str(d) for d in base_dezenas_auto)
+            st.session_state.base_wheeling_value = ",".join(str(d) for d in base_dezenas_auto)
 
     if pagina == "Gerar jogos":
         explicacoes = {
@@ -728,7 +733,7 @@ try:
             if estrategia == "Sem sequências longas":
                 st.write(f"- Máx. sequência: **{limite_seq}** dezenas seguidas")
             if estrategia == "Wheeling simples (base fixa)":
-                st.write(f"- Base atual: `{st.session_state.base_wheeling}`")
+                st.write(f"- Base atual: `{st.session_state.get('base_wheeling_value', '')}`")
 
             if gerar:
                 if estrategia == "Aleatório puro":
@@ -752,7 +757,7 @@ try:
                     )
                 elif estrategia == "Wheeling simples (base fixa)":
                     try:
-                        base_texto = st.session_state.get("base_wheeling", "")
+                        base_texto = st.session_state.get("base_wheeling_value", "")
                         base_dezenas = [
                             int(x.strip())
                             for x in str(base_texto).split(",")
