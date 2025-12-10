@@ -1,437 +1,198 @@
 import streamlit as st
 import pandas as pd
-import random
-from pathlib import Path
+import numpy as np
+from datetime import datetime
 
+# ==========================
+# CONFIGURAÇÃO BÁSICA
+# ==========================
+st.set_page_config(
+    page_title="Mega Sena Helper",
+    page_icon="🎰",
+    layout="wide"
+)
 
-# ---------------- CONFIGURAÇÕES BÁSICAS ----------------
-
-HIST_CSV_PATH = Path("historico_mega_sena.csv")  # seu CSV de histórico
-
-
-# ---------------- FUNÇÕES DE DADOS ----------------
-
-def load_data() -> pd.DataFrame:
+# ==========================
+# FUNÇÕES AUXILIARES
+# ==========================
+@st.cache_data
+def carregar_concursos(caminho_csv: str = "megasena.csv") -> pd.DataFrame:
     """
-    Carrega histórico da Mega-Sena de um CSV separado por ';'.
-    Espera colunas: concurso, data, dezena1..dezena6. [file:493]
+    Espera um CSV com colunas:
+    concurso, data, d1, d2, d3, d4, d5, d6
     """
-    if not HIST_CSV_PATH.exists():
-        raise FileNotFoundError(f"Arquivo {HIST_CSV_PATH} não encontrado.")
-
-    df = pd.read_csv(HIST_CSV_PATH, sep=";")
-    df = df.rename(columns={
-        "concurso": "concurso",
-        "data": "data",
-        "dezena1": "dezena1",
-        "dezena2": "dezena2",
-        "dezena3": "dezena3",
-        "dezena4": "dezena4",
-        "dezena5": "dezena5",
-        "dezena6": "dezena6",
-    })
+    df = pd.read_csv(caminho_csv, sep=";")
+    # Garante tipos
+    df["concurso"] = df["concurso"].astype(int)
+    df["data"] = pd.to_datetime(df["data"], dayfirst=True, errors="coerce")
+    dezenas_cols = ["d1", "d2", "d3", "d4", "d5", "d6"]
+    for c in dezenas_cols:
+        df[c] = df[c].astype(int)
     return df
 
 
-# ---------------- FUNÇÕES DE ANÁLISE ----------------
-
-def _cols_dezenas(df: pd.DataFrame) -> list:
-    """Colunas de dezenas: dezena1..dezena6."""
-    return [c for c in df.columns if c.lower().startswith("dezena")]
-
-
-def analyze_frequency(df_hist: pd.DataFrame) -> pd.DataFrame:
-    """Frequência de cada dezena no histórico. [file:493]"""
-    if df_hist.empty:
-        return pd.DataFrame()
-
-    dezenas_cols = _cols_dezenas(df_hist)
-    if not dezenas_cols:
-        st.error(f"Nenhuma coluna de dezenas encontrada. Colunas: {list(df_hist.columns)}")
-        return pd.DataFrame()
-
-    df_melt = df_hist.melt(value_vars=dezenas_cols, value_name="dezena")
-    if df_melt.empty:
-        st.warning("Nenhuma dezena válida após limpeza dos dados.")
-        return pd.DataFrame()
-
-    freq = (
-        df_melt["dezena"]
-        .value_counts()
-        .sort_index()
-        .reset_index()
-        .rename(columns={"index": "dezena", "dezena": "frequencia"})
-    )
-    return freq.sort_values("dezena")
-
-
-
-def analyze_delay(df_hist: pd.DataFrame) -> pd.DataFrame:
-    """Atraso (em concursos) de cada dezena. [file:493]"""
-    if df_hist.empty:
-        return pd.DataFrame()
-
-    df = df_hist.reset_index(drop=True)
-    dezenas_cols = _cols_dezenas(df)
-    ultima_linha = len(df) - 1
-    registros = []
-
-    for dez in range(1, 61):
-        apareceu_em = df[df[dezenas_cols].eq(dez).any(axis=1)].index
-        atraso = None if len(apareceu_em) == 0 else ultima_linha - apareceu_em.max()
-        registros.append({"dezena": dez, "atraso": atraso})
-
-    return pd.DataFrame(registros).sort_values("dezena")
-
-
-def analyze_par_impar(df_hist: pd.DataFrame) -> pd.DataFrame:
-    """Distribuição de pares/ímpares por concurso. [file:493]"""
-    if df_hist.empty:
-        return pd.DataFrame()
-
-    dezenas_cols = _cols_dezenas(df_hist)
-    registros = []
-    for _, row in df_hist.iterrows():
-        dezenas = [int(row[c]) for c in dezenas_cols]
-        pares = sum(1 for d in dezenas if d % 2 == 0)
-        impares = len(dezenas) - pares
-        registros.append({"pares": pares, "impares": impares})
-
-    tmp = pd.DataFrame(registros)
-    out = (
-        tmp.value_counts(["pares", "impares"])
-        .reset_index(name="qtd")
-        .sort_values("qtd", ascending=False)
-    )
-    return out
-
-
-# ---------------- FUNÇÕES DE PREÇO ----------------
-
-def preco_por_jogo(dezenas_por_jogo: int) -> float:
-    """Preço aproximado conforme nº de dezenas. [web:443]"""
-    tabela = {
-        6: 5.00,
-        7: 35.00,
-        8: 140.00,
-        9: 378.00,
-        10: 945.00,
-        11: 2079.00,
-        12: 4158.00,
-        13: 7722.00,
-        14: 13513.50,
-        15: 22522.50,
-    }
-    return tabela.get(dezenas_por_jogo, 0.0)
-
-
-def custo_total(qtd_jogos: int, dezenas_por_jogo: int) -> float:
-    return qtd_jogos * preco_por_jogo(dezenas_por_jogo)
-
-
-# ---------------- GERADOR DE JOGOS ----------------
-
-def gerar_jogo_simples(dezenas_por_jogo: int) -> list[int]:
-    return sorted(random.sample(range(1, 61), dezenas_por_jogo))
+def calcular_frequencias(df: pd.DataFrame) -> pd.DataFrame:
+    dezenas_cols = ["d1", "d2", "d3", "d4", "d5", "d6"]
+    todas = df[dezenas_cols].values.ravel()
+    freq = pd.Series(todas).value_counts().sort_index()
+    freq_df = freq.reset_index()
+    freq_df.columns = ["dezena", "frequencia"]
+    freq_df["dezena"] = freq_df["dezena"].astype(int)
+    return freq_df
 
 
 def gerar_jogos(
+    metodo: str,
     qtd_jogos: int,
-    dezenas_por_jogo: int,
-    estrategia: str,
+    tam_jogo: int,
     freq_df: pd.DataFrame | None = None,
-) -> pd.DataFrame:
+) -> list[list[int]]:
     jogos = []
+    universe = np.arange(1, 61)
 
-    # só usa freq_df se for DataFrame válido COM colunas 'dezena' e 'frequencia'
-    if (
-        isinstance(freq_df, pd.DataFrame)
-        and not freq_df.empty
-        and "dezena" in freq_df.columns
-        and "frequencia" in freq_df.columns
-    ):
-        freq_sorted = freq_df.sort_values("frequencia", ascending=False)
-        quentes = freq_sorted["dezena"].tolist()[:20]
-        frias = freq_sorted["dezena"].tolist()[-20:]
-    else:
-        quentes = []
-        frias = []
+    for _ in range(qtd_jogos):
+        if metodo == "Aleatório puro":
+            dezenas = np.random.choice(universe, size=tam_jogo, replace=False)
 
-    for i in range(1, qtd_jogos + 1):
-        if estrategia == "aleatorio_puro":
-            dezenas = gerar_jogo_simples(dezenas_por_jogo)
+        elif metodo == "Mais frequentes" and freq_df is not None:
+            # Ordena por frequência decrescente
+            ordenado = freq_df.sort_values("frequencia", ascending=False)
+            base = ordenado["dezena"].values[:max(tam_jogo * 3, tam_jogo)]
+            dezenas = np.random.choice(base, size=tam_jogo, replace=False)
 
-        elif estrategia == "balanceado_par_impar":
-            alvo_par = dezenas_por_jogo // 2
-            alvo_impar = dezenas_por_jogo - alvo_par
-            pares = random.sample([d for d in range(1, 61) if d % 2 == 0], alvo_par)
-            impares = random.sample([d for d in range(1, 61) if d % 2 != 0], alvo_impar)
-            dezenas = sorted(pares + impares)
+        elif metodo == "Menos frequentes" and freq_df is not None:
+            ordenado = freq_df.sort_values("frequencia", ascending=True)
+            base = ordenado["dezena"].values[:max(tam_jogo * 3, tam_jogo)]
+            dezenas = np.random.choice(base, size=tam_jogo, replace=False)
 
-        elif estrategia == "faixas":
-            faixas = [range(1, 21), range(21, 41), range(41, 61)]
-            dezenas = []
-            while len(dezenas) < dezenas_por_jogo:
-                f = random.choice(faixas)
-                n = random.choice(list(f))
-                if n not in dezenas:
-                    dezenas.append(n)
-            dezenas = sorted(dezenas)
-
-        elif estrategia == "sem_sequencias":
-            while True:
-                dezenas = gerar_jogo_simples(dezenas_por_jogo)
-                if not any(
-                    dezenas[j] == dezenas[j - 1] + 1
-                    for j in range(1, len(dezenas))
-                ):
-                    break
-
-        elif estrategia == "hot" and quentes:
-            dezenas = sorted(random.sample(quentes, min(dezenas_por_jogo, len(quentes))))
-
-        elif estrategia == "cold" and frias:
-            dezenas = sorted(random.sample(frias, min(dezenas_por_jogo, len(frias))))
-
-        elif estrategia == "hot_cold_misto" and quentes and frias:
-            qtd_hot = max(1, dezenas_por_jogo // 3)
-            qtd_cold = max(1, dezenas_por_jogo // 3)
-            qtd_rest = dezenas_por_jogo - qtd_hot - qtd_cold
-
-            escolha_hot = random.sample(quentes, min(qtd_hot, len(quentes)))
-            escolha_cold = random.sample(frias, min(qtd_cold, len(frias)))
-            restantes = [d for d in range(1, 61) if d not in escolha_hot + escolha_cold]
-            escolha_rest = random.sample(restantes, max(0, qtd_rest))
-            dezenas = sorted(escolha_hot + escolha_cold + escolha_rest)
+        elif metodo == "Misto (mais+menos)" and freq_df is not None:
+            ordenado_mais = freq_df.sort_values("frequencia", ascending=False)
+            ordenado_menos = freq_df.sort_values("frequencia", ascending=True)
+            top = ordenado_mais["dezena"].values[:30]
+            bottom = ordenado_menos["dezena"].values[:30]
+            base = np.unique(np.concatenate([top, bottom]))
+            dezenas = np.random.choice(base, size=tam_jogo, replace=False)
 
         else:
-            dezenas = gerar_jogo_simples(dezenas_por_jogo)
+            # fallback para aleatório
+            dezenas = np.random.choice(universe, size=tam_jogo, replace=False)
 
-        linha = {"jogo": i}
-        for idx, d in enumerate(dezenas, start=1):
-            linha[f"dezena{idx}"] = d
-        jogos.append(linha)
+        jogos.append(sorted(dezenas.tolist()))
 
-    return pd.DataFrame(jogos)
+    return jogos
 
 
-# ---------------- PÁGINA: GERAR JOGOS ----------------
+def formatar_jogo(jogo: list[int]) -> str:
+    return " - ".join(f"{d:02d}" for d in jogo)
 
-def pagina_gerar_jogos():
-    st.header("Gerar jogos")
 
-    try:
-        df_hist = load_data()
-        freq_df = analyze_frequency(df_hist) if df_hist is not None and not df_hist.empty else None
-    except Exception:
-        freq_df = None
+# ==========================
+# SIDEBAR
+# ==========================
+with st.sidebar:
+    st.title("Mega Sena Helper 🎰")
 
-    estrategias_disponiveis = [
-        "aleatorio_puro",
-        "balanceado_par_impar",
-        "faixas",
-        "sem_sequencias",
-        "hot",
-        "cold",
-        "hot_cold_misto",
-    ]
-
-    with st.form("form_gerar_jogos"):
-        qtd_jogos = st.number_input("Quantidade de jogos", min_value=1, max_value=1000, value=5, step=1)
-        dezenas_por_jogo = st.number_input("Dezenas por jogo", min_value=6, max_value=15, value=6, step=1)
-        estrategia = st.selectbox("Estratégia", estrategias_disponiveis, index=0)
-        gerar_todas = st.checkbox("Gerar 1 jogo para cada estratégia acima", value=False)
-
-        with st.expander("Entenda as estratégias"):
-            st.markdown(
-                """
-**Importante:** todas as combinações têm a mesma probabilidade matemática.
-As estratégias abaixo só organizam os números de formas diferentes e não garantem prêmio. [web:343][web:339]
-
-- **aleatorio_puro** – dezenas totalmente aleatórias entre 1 e 60. [web:343]  
-- **balanceado_par_impar** – mantém equilíbrio entre pares e ímpares. [web:317][web:320]  
-- **faixas** – distribui as dezenas em 1–20, 21–40 e 41–60. [web:319]  
-- **sem_sequencias** – evita sequências longas de dezenas consecutivas. [web:486]  
-- **hot** – prioriza dezenas mais frequentes no histórico. [web:322]  
-- **cold** – prioriza dezenas menos frequentes/atrasadas. [web:322][web:323]  
-- **hot_cold_misto** – mistura dezenas quentes, frias e neutras. [web:322]
-                """
-            )
-
-        submitted = st.form_submit_button("Gerar jogos")
-
-    if not submitted:
-        return
-
-    if qtd_jogos <= 0:
-        st.error("A quantidade de jogos deve ser maior que zero.")
-        return
-
-    try:
-        if gerar_todas:
-            linhas = []
-            for nome_estrategia in estrategias_disponiveis:
-                df_tmp = gerar_jogos(
-                    qtd_jogos=1,
-                    dezenas_por_jogo=int(dezenas_por_jogo),
-                    estrategia=nome_estrategia,
-                    freq_df=freq_df,
-                )
-                df_tmp["estrategia"] = nome_estrategia
-                linhas.append(df_tmp)
-            df_jogos = pd.concat(linhas, ignore_index=True)
-        else:
-            df_jogos = gerar_jogos(
-                int(qtd_jogos),
-                int(dezenas_por_jogo),
-                estrategia,
-                freq_df=freq_df,
-            )
-    except Exception as e:
-        st.error(f"Erro ao gerar jogos: {e}")
-        return
-
-    if "jogo" in df_jogos.columns:
-        df_jogos["jogo"] = df_jogos["jogo"].apply(lambda x: f"#{int(x)}")
-
-    st.subheader("Jogos gerados")
-    st.dataframe(df_jogos, width="stretch", hide_index=True)
-
-    try:
-        preco = preco_por_jogo(int(dezenas_por_jogo))
-        qtd_para_preco = len(df_jogos) if gerar_todas else int(qtd_jogos)
-        total = custo_total(qtd_para_preco, int(dezenas_por_jogo))
-        st.info(f"Preço por jogo: R$ {preco:,.2f} | Custo total: R$ {total:,.2f}")
-    except Exception as e:
-        st.warning(f"Não foi possível calcular o custo: {e}")
-
-    csv = df_jogos.to_csv(index=False).encode("utf-8")
-    st.download_button(
-        label="Baixar jogos em CSV",
-        data=csv,
-        file_name="jogos_mega_sena.csv",
-        mime="text/csv",
+    st.markdown("### Configurações básicas")
+    caminho_csv = st.text_input(
+        "Caminho/arquivo CSV dos concursos",
+        value="megasena.csv",
+        help="Use o mesmo arquivo que você já baixou da Caixa ou do seu script."
     )
 
+    metodo = st.selectbox(
+        "Método de geração",
+        ["Aleatório puro", "Mais frequentes", "Menos frequentes", "Misto (mais+menos)"],
+    )
 
-# ---------------- PÁGINA: ANÁLISES ----------------
+    qtd_jogos = st.number_input(
+        "Quantidade de jogos",
+        min_value=1,
+        max_value=50,
+        value=5,
+        step=1,
+    )
 
-def pagina_analises():
-    st.header("Análises estatísticas")
+    tam_jogo = st.slider(
+        "Quantidade de dezenas por jogo",
+        min_value=6,
+        max_value=15,
+        value=6,
+    )
 
-    try:
-        df_hist = load_data()
-    except Exception as e:
-        st.error(f"Erro ao carregar histórico: {e}")
-        return
+    mostrar_frequencias = st.checkbox(
+        "Mostrar tabela de frequências",
+        value=True
+    )
 
-    if df_hist is None or df_hist.empty:
-        st.warning("Nenhum histórico carregado para análise (arquivo historico_mega_sena.csv não encontrado ou vazio).")
-        return
+# ==========================
+# CORPO PRINCIPAL
+# ==========================
+st.title("Gerador de Jogos para Mega-Sena")
 
-    with st.expander("Entenda as análises"):
-        st.markdown(
-            """
-Todas as análises são estatísticas descritivas do passado e não aumentam matematicamente a chance de ganhar. [web:343]
+st.markdown(
+    "App experimental para estudo estatístico e geração de combinações de jogos "
+    "a partir do histórico de concursos da Mega-Sena."
+)
 
-- **Frequência das dezenas** – quantas vezes cada número já foi sorteado. [web:322]  
-- **Atraso (delay)** – há quantos concursos cada dezena não aparece. [web:323]  
-- **Distribuição par/ímpar** – quais composições de pares/ímpares ocorrem mais. [web:322]  
-- **Faixas** – como as dezenas se distribuem entre 1–20, 21–40, 41–60. [web:322]
-            """
+# Carrega concursos
+try:
+    df_concursos = carregar_concursos(caminho_csv)
+    freq_df = calcular_frequencias(df_concursos)
+
+    col1, col2 = st.columns([2, 1])
+
+    with col1:
+        st.subheader("Histórico carregado")
+        st.write(
+            f"Total de concursos: **{len(df_concursos)}** "
+            f"(de {df_concursos['data'].min().date()} até {df_concursos['data'].max().date()})"
         )
 
-    aba_freq, aba_atraso, aba_par_impar, aba_faixas = st.tabs(
-        ["Frequência", "Atraso", "Par/Ímpar", "Faixas"]
+        if mostrar_frequencias:
+            st.subheader("Frequência das dezenas")
+            st.dataframe(
+                freq_df.style.background_gradient(
+                    subset=["frequencia"], cmap="Blues"
+                ),
+                use_container_width=True,
+                height=400,
+            )
+
+    with col2:
+        st.subheader("Parâmetros selecionados")
+        st.write(f"- Método: **{metodo}**")
+        st.write(f"- Jogos: **{qtd_jogos}**")
+        st.write(f"- Dezenas por jogo: **{tam_jogo}**")
+
+        if st.button("Gerar jogos agora", type="primary"):
+            jogos = gerar_jogos(
+                metodo=metodo,
+                qtd_jogos=qtd_jogos,
+                tam_jogo=tam_jogo,
+                freq_df=freq_df,
+            )
+
+            st.markdown("### Jogos sugeridos")
+            for i, jogo in enumerate(jogos, start=1):
+                st.code(f"Jogo {i:02d}: {formatar_jogo(jogo)}")
+
+            # Opcional: baixar em CSV
+            jogos_df = pd.DataFrame(
+                jogos,
+                columns=[f"d{i}" for i in range(1, tam_jogo + 1)]
+            )
+            csv_data = jogos_df.to_csv(index=False, sep=";").encode("utf-8")
+            st.download_button(
+                label="Baixar jogos em CSV",
+                data=csv_data,
+                file_name=f"jogos_megasena_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                mime="text/csv",
+            )
+
+except FileNotFoundError:
+    st.error(
+        "Arquivo de concursos não encontrado. "
+        "Verifique o caminho/arquivo CSV informado na barra lateral."
     )
-
-    with aba_freq:
-        st.subheader("Frequência das dezenas")
-        st.info("Mostra quantas vezes cada dezena já foi sorteada no histórico. [web:322]")
-        try:
-            freq_df = analyze_frequency(df_hist)
-            if freq_df is None or freq_df.empty:
-                st.warning("Não foi possível calcular a frequência (DataFrame vazio).")
-            else:
-                st.dataframe(freq_df, width="stretch")
-        except Exception as e:
-            st.error(f"Erro ao calcular frequência (detalhe): {e}")
-
-
-    with aba_atraso:
-        st.subheader("Atraso das dezenas")
-        st.info("Mostra há quantos concursos cada dezena não aparece. [web:323]")
-        try:
-            atraso_df = analyze_delay(df_hist)
-            st.dataframe(atraso_df, width="stretch")
-        except Exception as e:
-            st.error(f"Erro ao calcular atraso: {e}")
-
-    with aba_par_impar:
-        st.subheader("Distribuição par/ímpar")
-        st.info("Mostra as composições de pares e ímpares que mais ocorrem. [web:322]")
-        try:
-            par_impar_df = analyze_par_impar(df_hist)
-            st.dataframe(par_impar_df, width="stretch")
-        except Exception as e:
-            st.error(f"Erro ao calcular distribuição par/ímpar: {e}")
-
-    with aba_faixas:
-        st.subheader("Distribuição por faixas")
-        st.info("Mostra como as dezenas se distribuem entre 1–20, 21–40 e 41–60. [web:322]")
-        try:
-            df_tmp = df_hist.copy()
-            dezenas_cols = _cols_dezenas(df_tmp)
-            df_melt = df_tmp.melt(value_vars=dezenas_cols, value_name="dezena")
-
-            if "dezena" not in df_melt.columns:
-                st.error(f"Coluna 'dezena' não existe após melt. Colunas: {list(df_melt.columns)}")
-            else:
-                df_melt = df_melt.dropna(subset=["dezena"])
-                df_melt["dezena"] = df_melt["dezena"].astype(str).str.strip()
-                df_melt = df_melt[df_melt["dezena"].str.fullmatch(r"\d+")]
-                df_melt["dezena"] = df_melt["dezena"].astype(int)
-                df_melt["faixa"] = pd.cut(
-                    df_melt["dezena"],
-                    bins=[0, 20, 40, 60],
-                    labels=["1-20", "21-40", "41-60"],
-                )
-                faixas_df = df_melt.groupby("faixa", observed=False)["dezena"].count().reset_index(name="qtd")
-                st.dataframe(faixas_df, width="stretch")
-        except Exception as e:
-            st.error(f"Erro ao calcular distribuição por faixas: {e}")
-
-
-# ---------------- PÁGINA: SOBRE ----------------
-
-def pagina_sobre():
-    st.header("Sobre o projeto")
-    st.markdown(
-        """
-Aplicativo para estudo estatístico da Mega-Sena e geração de jogos com diferentes estratégias.  
-As análises usam dados históricos apenas para visualização e aprendizado. [web:322]
-        """
-    )
-
-
-# ---------------- NAVEGAÇÃO PRINCIPAL ----------------
-
-def main():
-    st.set_page_config(page_title="Mega-Sena Helper", layout="wide")
-
-    st.sidebar.title("Navegação")
-    pagina = st.sidebar.selectbox(
-        "Escolha a página",
-        ["Gerar jogos", "Análises", "Sobre"],
-    )
-
-    if pagina == "Gerar jogos":
-        pagina_gerar_jogos()
-    elif pagina == "Análises":
-        pagina_analises()
-    elif pagina == "Sobre":
-        pagina_sobre()
-
-
-if __name__ == "__main__":
-    main()
+except Exception as e:
+    st.error(f"Ocorreu um erro ao carregar/usar os dados: {e}")
