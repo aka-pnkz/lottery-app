@@ -19,7 +19,7 @@ st.set_page_config(
 # CARGA E ESTATÍSTICAS BÁSICAS
 # ==========================
 @st.cache_data
-def carregar_concursos(caminho_csv: str = "megasena.csv") -> pd.DataFrame:
+def carregar_concursos(caminho_csv: str = "historico_mega_sena.csv") -> pd.DataFrame:
     """
     Espera CSV com colunas:
     concurso;data;d1;d2;d3;d4;d5;d6
@@ -492,7 +492,7 @@ with st.sidebar:
 
     caminho_csv = st.text_input(
         "Caminho/arquivo CSV dos concursos",
-        value="megasena.csv",
+        value="historico_mega_sena.csv",
     )
 
     pagina = st.radio(
@@ -701,7 +701,8 @@ try:
 except FileNotFoundError:
     st.error(
         "Arquivo de concursos não encontrado. "
-        "Verifique o caminho/arquivo CSV informado na barra lateral."
+        "Verifique se o arquivo historico_mega_sena.csv está na raiz do projeto "
+        "ou ajuste o caminho na barra lateral."
     )
 except Exception as e:
     st.error(f"Ocorreu um erro ao carregar/usar os dados: {e}")
