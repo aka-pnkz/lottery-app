@@ -14,7 +14,7 @@ HIST_CSV_PATH = Path("historico_mega_sena.csv")  # ajuste se quiser outro caminh
 def load_data() -> pd.DataFrame:
     """
     Carrega histórico da Mega-Sena de um CSV.
-    Espera colunas: concurso, data, d1..d6 (ou mais dezenas).
+    Espera colunas: concurso, data, dezena1..dezena6 (ou mais dezenas).
     Se não encontrar o arquivo, devolve DataFrame vazio.
     """
     if not HIST_CSV_PATH.exists():
@@ -26,23 +26,34 @@ def load_data() -> pd.DataFrame:
 
 # ---------------- FUNÇÕES DE ANÁLISE ----------------
 
+def _cols_dezenas(df: pd.DataFrame) -> list:
+    """Retorna as colunas de dezenas no padrão dezena1, dezena2..."""
+    return [c for c in df.columns if c.lower().startswith("dezena")]
+
+
 def analyze_frequency(df_hist: pd.DataFrame) -> pd.DataFrame:
     """
     Calcula a frequência de cada dezena no histórico.
-    Considera colunas que começam com 'd'.
+    Considera colunas que começam com 'dezena'.
     """
     if df_hist.empty:
         return pd.DataFrame()
 
-    dezenas_cols = [c for c in df_hist.columns if c.startswith("dezena")]
+    dezenas_cols = _cols_dezenas(df_hist)
     df_melt = df_hist.melt(value_vars=dezenas_cols, value_name="dezena")
-    freq = df_melt["dezena"].value_counts().sort_index()
-    out = (
-        freq.reset_index()
+
+    df_melt = df_melt.dropna(subset=["dezena"])
+    df_melt["dezena"] = df_melt["dezena"].astype(int)
+
+    freq = (
+        df_melt["dezena"]
+        .value_counts()
+        .sort_index()
+        .reset_index()
         .rename(columns={"index": "dezena", "dezena": "frequencia"})
-        .sort_values("dezena")
     )
-    return out
+
+    return freq.sort_values("dezena")
 
 
 def analyze_delay(df_hist: pd.DataFrame) -> pd.DataFrame:
@@ -54,13 +65,12 @@ def analyze_delay(df_hist: pd.DataFrame) -> pd.DataFrame:
         return pd.DataFrame()
 
     df = df_hist.reset_index(drop=True)
-    dezenas_cols = [c for c in df.columns if c.startswith("d")]
+    dezenas_cols = _cols_dezenas(df)
 
     ultima_linha = len(df) - 1
     registros = []
 
     for dezena in range(1, 61):
-        # última vez que apareceu
         apareceu_em = df[df[dezenas_cols].eq(dezena).any(axis=1)].index
         if len(apareceu_em) == 0:
             atraso = None
@@ -79,7 +89,7 @@ def analyze_par_impar(df_hist: pd.DataFrame) -> pd.DataFrame:
     if df_hist.empty:
         return pd.DataFrame()
 
-    dezenas_cols = [c for c in df_hist.columns if c.startswith("d")]
+    dezenas_cols = _cols_dezenas(df_hist)
     registros = []
     for _, row in df_hist.iterrows():
         dezenas = [int(row[c]) for c in dezenas_cols]
@@ -117,7 +127,6 @@ def preco_por_jogo(dezenas_por_jogo: int) -> float:
     }  # [web:443]
 
     if dezenas_por_jogo not in tabela:
-        # fallback simples: sem preço conhecido
         return 0.0
     return tabela[dezenas_por_jogo]
 
@@ -144,7 +153,6 @@ def gerar_jogos(
     """
     jogos = []
 
-    # pré-processamento de frequências (para hot/cold)
     if freq_df is not None and not freq_df.empty and "dezena" in freq_df.columns:
         freq_sorted = freq_df.sort_values("frequencia", ascending=False)
         quentes = freq_sorted["dezena"].tolist()[:20]
@@ -184,10 +192,10 @@ def gerar_jogos(
                     break
 
         elif estrategia == "hot" and quentes:
-            dezenas = sorted(random.sample(quentes, dezenas_por_jogo))
+            dezenas = sorted(random.sample(quentes, min(dezenas_por_jogo, len(quentes))))
 
         elif estrategia == "cold" and frias:
-            dezenas = sorted(random.sample(frias, dezenas_por_jogo))
+            dezenas = sorted(random.sample(frias, min(dezenas_por_jogo, len(frias))))
 
         elif estrategia == "hot_cold_misto" and quentes and frias:
             qtd_hot = max(1, dezenas_por_jogo // 3)
@@ -205,12 +213,11 @@ def gerar_jogos(
 
         jogos.append({"jogo": i, "dezenas": dezenas})
 
-    # explode dezenas em colunas d1..dn
     linhas = []
     for row in jogos:
         base = {"jogo": row["jogo"]}
         for idx, d in enumerate(row["dezenas"], start=1):
-            base[f"d{idx}"] = d
+            base[f"dezena{idx}"] = d
         linhas.append(base)
 
     return pd.DataFrame(linhas)
@@ -221,7 +228,6 @@ def gerar_jogos(
 def pagina_gerar_jogos():
     st.header("Gerar jogos")
 
-    # carrega histórico para estratégias hot/cold
     try:
         df_hist = load_data()
         freq_df = analyze_frequency(df_hist) if df_hist is not None and not df_hist.empty else None
@@ -253,7 +259,7 @@ As estratégias abaixo só organizam os números de formas diferentes e não gar
 - **aleatorio_puro** – dezenas totalmente aleatórias entre 1 e 60. [web:343]  
 - **balanceado_par_impar** – mantém equilíbrio entre pares e ímpares. [web:317][web:320]  
 - **faixas** – distribui as dezenas em 1–20, 21–40 e 41–60. [web:319]  
-- **sem_sequencias** – evita sequências longas de dezenas consecutivas. [web:319]  
+- **sem_sequencias** – evita sequências longas de dezenas consecutivas. [web:486]  
 - **hot** – prioriza dezenas mais frequentes no histórico. [web:322]  
 - **cold** – prioriza dezenas menos frequentes/atrasadas. [web:322][web:323]  
 - **hot_cold_misto** – mistura dezenas quentes, frias e neutras. [web:322]
@@ -379,8 +385,10 @@ Todas as análises são estatísticas descritivas do passado e não aumentam mat
         st.info("Mostra como as dezenas se distribuem entre 1–20, 21–40 e 41–60. [web:322]")
         try:
             df_tmp = df_hist.copy()
-            dezenas_cols = [c for c in df_tmp.columns if c.startswith("d")]
+            dezenas_cols = _cols_dezenas(df_tmp)
             df_melt = df_tmp.melt(value_vars=dezenas_cols, value_name="dezena")
+            df_melt = df_melt.dropna(subset=["dezena"])
+            df_melt["dezena"] = df_melt["dezena"].astype(int)
             df_melt["faixa"] = pd.cut(
                 df_melt["dezena"],
                 bins=[0, 20, 40, 60],
