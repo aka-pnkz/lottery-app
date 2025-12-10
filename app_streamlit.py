@@ -297,7 +297,7 @@ As estratégias abaixo só organizam os números de formas diferentes e não gar
         df_jogos["jogo"] = df_jogos["jogo"].apply(lambda x: f"#{int(x)}")
 
     st.subheader("Jogos gerados")
-    st.dataframe(df_jogos, use_container_width=True, hide_index=True)
+    st.dataframe(df_jogos, width="stretch", hide_index=True)
 
     try:
         preco = preco_por_jogo(int(dezenas_por_jogo))
@@ -352,7 +352,7 @@ Todas as análises são estatísticas descritivas do passado e não aumentam mat
         st.info("Mostra quantas vezes cada dezena já foi sorteada no histórico. [web:322]")
         try:
             freq_df = analyze_frequency(df_hist)
-            st.dataframe(freq_df, use_container_width=True)
+            st.dataframe(freq_df, width="stretch")
         except Exception as e:
             st.error(f"Erro ao calcular frequência: {e}")
 
@@ -361,7 +361,7 @@ Todas as análises são estatísticas descritivas do passado e não aumentam mat
         st.info("Mostra há quantos concursos cada dezena não aparece. [web:323]")
         try:
             atraso_df = analyze_delay(df_hist)
-            st.dataframe(atraso_df, use_container_width=True)
+            st.dataframe(atraso_df, width="stretch")
         except Exception as e:
             st.error(f"Erro ao calcular atraso: {e}")
 
@@ -370,7 +370,7 @@ Todas as análises são estatísticas descritivas do passado e não aumentam mat
         st.info("Mostra as composições de pares e ímpares que mais ocorrem. [web:322]")
         try:
             par_impar_df = analyze_par_impar(df_hist)
-            st.dataframe(par_impar_df, use_container_width=True)
+            st.dataframe(par_impar_df, width="stretch")
         except Exception as e:
             st.error(f"Erro ao calcular distribuição par/ímpar: {e}")
 
@@ -387,7 +387,7 @@ Todas as análises são estatísticas descritivas do passado e não aumentam mat
                 labels=["1-20", "21-40", "41-60"],
             )
             faixas_df = df_melt.groupby("faixa")["dezena"].count().reset_index(name="qtd")
-            st.dataframe(faixas_df, use_container_width=True)
+            st.dataframe(faixas_df, width="stretch")
         except Exception as e:
             st.error(f"Erro ao calcular distribuição por faixas: {e}")
 
