@@ -27,7 +27,7 @@ st.set_page_config(
 
 CSV_PATH = "historico_mega_sena.csv"
 
-PRECO_SIMPLES_6_DEFAULT = 7.50
+PRECO_SIMPLES_6_DEFAULT = 6.00
 TOTAL_COMBS_MEGA = math.comb(60, 6)
 
 
