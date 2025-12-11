@@ -1317,29 +1317,30 @@ if pagina == "Gerar jogos":
 
             # heatmap 1–60
             with col_a2:
-                st.markdown("**Heatmap de cobertura (1–60)**")
-            
-                if HAS_ALTAIR and not df_freq_jogos.empty:
-                    df_heat = df_freq_jogos.copy()
-                    df_heat["linha"] = ((df_heat["dezena"] - 1) // 10) + 1
-                    df_heat["coluna"] = ((df_heat["dezena"] - 1) % 10) + 1
-            
-                    chart = (
-                        alt.Chart(df_heat)
-                        .mark_rect()
-                        .encode(
-                            x=alt.X("coluna:O", title="Coluna (1–10)"),
-                            y=alt.Y("linha:O", title="Linha (1–6)"),
-                            color=alt.Color("frequencia:Q", title="Freq."),
-                            tooltip=["dezena", "frequencia"],
-                        )
-                    )
-                    st.altair_chart(chart, use_container_width=True)
+    st.markdown("**Heatmap de cobertura (1–60)**")
+
+    if HAS_ALTAIR and not df_freq_jogos.empty:
+        df_heat = df_freq_jogos.copy()
+        df_heat["linha"] = ((df_heat["dezena"] - 1) // 10) + 1
+        df_heat["coluna"] = ((df_heat["dezena"] - 1) % 10) + 1
+
+        chart = (
+            alt.Chart(df_heat)
+            .mark_rect()
+            .encode(
+                x=alt.X("coluna:O", title="Coluna (1–10)"),
+                y=alt.Y("linha:O", title="Linha (1–6)"),
+                color=alt.Color("frequencia:Q", title="Freq."),
+                tooltip=["dezena", "frequencia"],
+            )
+        )
+        st.altair_chart(chart, use_container_width=True)
     else:
         st.info(
-            "Heatmap indisponível (biblioteca Altair não carregada ou sem dados suficientes). "
+            "Heatmap indisponível (Altair não está disponível ou não há dados suficientes). "
             "Veja a frequência das dezenas no gráfico ao lado."
         )
+
 
             # padrões par/ímpar e baixa/alta nos jogos gerados
             padroes_linhas = []
