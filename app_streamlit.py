@@ -317,6 +317,28 @@ def filtrar_jogos(
 
 
 # ==========================
+# SIMULAÇÃO DE RESULTADOS
+# ==========================
+def simular_premios(
+    jogos: list[list[int]],
+    dezenas_sorteadas: list[int],
+) -> pd.DataFrame:
+    dezenas_s = set(dezenas_sorteadas)
+    linhas = []
+    for i, jogo in enumerate(jogos, start=1):
+        acertos = len(set(jogo) & dezenas_s)
+        linhas.append(
+            {
+                "jogo_id": i,
+                "jogo": formatar_jogo(jogo),
+                "acertos": acertos,
+            }
+        )
+    df = pd.DataFrame(linhas)
+    return df
+
+
+# ==========================
 # FUNÇÕES DE ANÁLISE
 # ==========================
 def calcular_atraso(freq_df: pd.DataFrame, df_concursos: pd.DataFrame) -> pd.DataFrame:
@@ -455,12 +477,13 @@ def pagina_analises(df_concursos: pd.DataFrame, freq_df: pd.DataFrame) -> None:
         "As análises são descritivas e não garantem aumento de chance em sorteios futuros."
     )
 
-    tab_freq, tab_padroes, tab_somas, tab_pares_trios = st.tabs(
+    tab_freq, tab_padroes, tab_somas, tab_pares_trios, tab_ultimos = st.tabs(
         [
             "Frequência & Atraso",
             "Par/Ímpar & Baixa/Alta",
             "Soma das dezenas",
             "Pares & Trios",
+            "Últimos resultados",
         ]
     )
 
@@ -631,6 +654,32 @@ def pagina_analises(df_concursos: pd.DataFrame, freq_df: pd.DataFrame) -> None:
                 use_container_width=True,
             )
 
+    # ---- ÚLTIMOS RESULTADOS ----
+    with tab_ultimos:
+        st.subheader("Últimos resultados da Mega-Sena (histórico local)")
+        st.markdown(
+            "Veja os últimos concursos disponíveis no arquivo e use-os como referência "
+            "para montar ou simular jogos."
+        )
+
+        qtd_ultimos = st.slider(
+            "Quantidade de concursos para exibir",
+            min_value=5,
+            max_value=50,
+            value=10,
+            step=5,
+        )
+
+        ultimos = df_concursos.sort_values("concurso", ascending=False).head(
+            qtd_ultimos
+        )
+
+        st.dataframe(
+            ultimos.sort_values("concurso", ascending=False),
+            hide_index=True,
+            use_container_width=True,
+        )
+
 
 # ==========================
 # CARGA DOS DADOS (SEGURO)
@@ -675,6 +724,15 @@ with st.sidebar:
             "Valor usado como base para calcular o custo das apostas. "
             "Ajuste conforme a tabela oficial da Caixa ou da plataforma que você utiliza."
         ),
+    )
+
+    orcamento_max = st.number_input(
+        "Orçamento máximo (opcional)",
+        min_value=0.0,
+        max_value=1_000_000.0,
+        value=0.0,
+        step=10.0,
+        help="Se maior que zero, o app tenta limitar o número de jogos ao valor máximo informado.",
     )
 
     # Filtros avançados (valem para qualquer modo)
@@ -754,7 +812,7 @@ with st.sidebar:
             qtd_jogos = st.slider(
                 "Quantidade de jogos",
                 1,
-                30,
+                1000,
                 10,
                 help="Número de jogos diferentes que serão gerados.",
             )
@@ -1001,7 +1059,7 @@ if pagina == "Gerar jogos":
     st.title("Gerador de jogos da Mega-Sena")
     st.caption(
         "1) Escolha o modo e as estratégias na barra lateral. "
-        "2) Ajuste filtros se quiser refinar. "
+        "2) Ajuste filtros e orçamento se quiser refinar. "
         "3) Clique em **Gerar** para ver os jogos, custo e probabilidade aproximada."
     )
 
@@ -1033,6 +1091,8 @@ if pagina == "Gerar jogos":
             st.write(f"- Dezenas fixas: {sorted(dezenas_fixas)}")
         if dezenas_proibidas:
             st.write(f"- Dezenas proibidas: {sorted(dezenas_proibidas)}")
+        if orcamento_max > 0:
+            st.write(f"- Orçamento máximo: R$ {orcamento_max:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
 
     st.divider()
 
@@ -1050,8 +1110,10 @@ if pagina == "Gerar jogos":
                 st.markdown(f"**{nome}**")
                 st.write(desc)
 
-    # Tabs para jogos e tabela/export
-    tab_jogos, tab_tabela = st.tabs(["Jogos gerados", "Tabela / Resumo / Exportar"])
+    # Tabs para jogos, tabela/resumo e análise/simulação
+    tab_jogos, tab_tabela, tab_analise = st.tabs(
+        ["Jogos gerados", "Tabela / Resumo / Exportar", "Análise & Simulação"]
+    )
 
     jogos: list[list[int]] = []
     jogos_info: list[dict] = []
@@ -1185,7 +1247,7 @@ if pagina == "Gerar jogos":
                 pass
 
         # aplica filtros
-        jogos = filtrar_jogos(
+        jogos_filtrados = filtrar_jogos(
             jogos,
             dezenas_fixas=dezenas_fixas,
             dezenas_proibidas=dezenas_proibidas,
@@ -1196,22 +1258,48 @@ if pagina == "Gerar jogos":
         # re-sincroniza jogos_info com jogos filtrados
         novo_info = []
         for info in jogos_info:
-            if info["jogo"] in jogos:
+            if info["jogo"] in jogos_filtrados:
                 novo_info.append(info)
+        jogos = [info["jogo"] for info in novo_info]
         jogos_info = novo_info
+
+    # ---------- APLICAÇÃO DO ORÇAMENTO ----------
+    aviso_orcamento = ""
+    if jogos and orcamento_max > 0:
+        jogos_dentro = []
+        jogos_info_dentro = []
+        custo_acum = 0.0
+        for info in jogos_info:
+            jogo = info["jogo"]
+            custo_jogo = preco_aposta_megasena(len(jogo), preco_base_6)
+            if custo_acum + custo_jogo > orcamento_max:
+                break
+            custo_acum += custo_jogo
+            jogos_dentro.append(jogo)
+            jogos_info_dentro.append(info)
+
+        if len(jogos_dentro) < len(jogos):
+            aviso_orcamento = (
+                f"Foram mantidos {len(jogos_dentro)} jogos dentro do orçamento. "
+                f"{len(jogos) - len(jogos_dentro)} jogos foram descartados."
+            )
+        jogos = jogos_dentro
+        jogos_info = jogos_info_dentro
 
     # ---------- EXIBIÇÃO ----------
     if not jogos and (gerar or gerar_misto):
         tab_jogos.warning(
-            "Nenhum jogo foi gerado após aplicar as regras e filtros. "
-            "Revise os parâmetros na barra lateral (especialmente filtros avançados) e tente novamente."
+            "Nenhum jogo foi gerado após aplicar as regras, filtros e orçamento. "
+            "Revise os parâmetros na barra lateral (especialmente filtros avançados e orçamento) e tente novamente."
         )
         tab_tabela.info("Nenhum dado para exibir ainda.")
+        tab_analise.info("Nenhuma análise disponível sem jogos gerados.")
     elif not jogos:
         tab_jogos.write(
             "Ajuste os parâmetros na barra lateral e clique em **Gerar** para ver seus jogos aqui."
         )
         tab_tabela.write("A tabela com os jogos aparecerá aqui após a geração.")
+        tab_analise.write("A análise dos jogos gerados aparecerá aqui após a geração.")
     else:
         # painel de resumo (custo e probabilidade)
         custo_total = calcular_custo_total(jogos, preco_base_6)
@@ -1248,6 +1336,9 @@ if pagina == "Gerar jogos":
                 else:
                     st.metric("Chance aprox. de 1 Sena", "N/A")
 
+            if aviso_orcamento:
+                st.info(aviso_orcamento)
+
             col_left, col_center, col_right = st.columns([1, 2, 1])
             with col_center:
                 for i, info in enumerate(jogos_info, start=1):
@@ -1281,6 +1372,84 @@ if pagina == "Gerar jogos":
                 mime="text/csv",
                 use_container_width=True,
             )
+
+        # ---------------- ANALISE & SIMULAÇÃO ----------------
+        with tab_analise:
+            st.markdown("#### Análise dos jogos gerados")
+            st.caption(
+                "Veja como os jogos se distribuem em termos de frequência das dezenas, soma e par/ímpar, "
+                "e simule quantos acertos teriam em um sorteio específico."
+            )
+
+            # frequência das dezenas dentro dos jogos gerados
+            todas_dezenas = [d for j in jogos for d in j]
+            freq_jogos = pd.Series(todas_dezenas).value_counts().sort_index()
+            df_freq_jogos = freq_jogos.reset_index()
+            df_freq_jogos.columns = ["dezena", "frequencia"]
+
+            col_a1, col_a2 = st.columns(2)
+            with col_a1:
+                st.markdown("**Frequência das dezenas nos jogos gerados**")
+                st.bar_chart(
+                    df_freq_jogos.set_index("dezena")["frequencia"],
+                    use_container_width=True,
+                )
+
+            # distribuição de soma
+            somas = [sum(j) for j in jogos]
+            df_soma_jogos = pd.DataFrame({"soma": somas})
+            st.markdown("**Distribuição das somas dos jogos gerados**")
+            st.bar_chart(df_soma_jogos["soma"], use_container_width=True)
+
+            # simulação
+            st.markdown("---")
+            st.markdown("#### Simulação de acertos em um sorteio")
+            modo_sim = st.radio(
+                "Escolher resultado para simulação",
+                ["Usar concurso histórico", "Digitar resultado manual"],
+                horizontal=True,
+            )
+
+            dezenas_sorteadas: list[int] = []
+
+            if modo_sim == "Usar concurso histórico":
+                ultimos_ids = df_concursos.sort_values(
+                    "concurso", ascending=False
+                )["concurso"].head(50)
+                concurso_escolhido = st.selectbox(
+                    "Escolha o concurso para simular",
+                    options=ultimos_ids,
+                    format_func=lambda c: f"Concurso {c}",
+                )
+                linha = df_concursos.loc[
+                    df_concursos["concurso"] == concurso_escolhido
+                ].iloc[0]
+                dezenas_sorteadas = [int(linha[f"d{i}"]) for i in range(1, 7)]
+                st.write(f"Dezenas sorteadas nesse concurso: {formatar_jogo(dezenas_sorteadas)}")
+            else:
+                resultado_manual = st.text_input(
+                    "Informe 6 dezenas separadas por vírgula",
+                    placeholder="Ex: 5, 12, 23, 34, 45, 60",
+                )
+                dezenas_sorteadas = [
+                    int(x.strip())
+                    for x in resultado_manual.split(",")
+                    if x.strip().isdigit()
+                ]
+                if len(dezenas_sorteadas) != 6:
+                    st.warning("Informe exatamente 6 dezenas para a simulação.")
+
+            if len(dezenas_sorteadas) == 6:
+                df_sim = simular_premios(jogos, dezenas_sorteadas)
+                st.markdown("**Resumo de acertos nos jogos gerados**")
+                dist_acertos = (
+                    df_sim["acertos"].value_counts().sort_index().reset_index()
+                )
+                dist_acertos.columns = ["acertos", "qtd_jogos"]
+                st.dataframe(dist_acertos, hide_index=True, use_container_width=True)
+
+                st.markdown("**Detalhamento por jogo**")
+                st.dataframe(df_sim, hide_index=True, use_container_width=True)
 
 else:
     pagina_analises(df_concursos, freq_df)
