@@ -1,4 +1,5 @@
 import itertools
+import math
 from datetime import datetime
 
 import numpy as np
@@ -16,6 +17,12 @@ st.set_page_config(
 )
 
 CSV_PATH = "historico_mega_sena.csv"
+
+# valor base padrão da aposta simples (6 dezenas).
+# deixe isso fácil de ajustar conforme a tabela oficial / site que você usa.
+PRECO_SIMPLES_6_DEFAULT = 7.50
+
+TOTAL_COMBS_MEGA = math.comb(60, 6)
 
 
 # ==========================
@@ -229,6 +236,84 @@ def gerar_wheeling_simples(
 
 def formatar_jogo(jogo: list[int]) -> str:
     return " - ".join(f"{d:02d}" for d in jogo)
+
+
+# ==========================
+# CUSTO E PROBABILIDADE
+# ==========================
+def preco_aposta_megasena(n_dezenas: int, preco_6: float) -> float:
+    """
+    Calcula o valor APROXIMADO de UMA aposta da Mega-Sena com n_dezenas (>= 6),
+    usando combinações C(n, 6) * preço_base.
+    O valor real pode ter arredondamentos/tabela específica da Caixa.
+    """
+    if n_dezenas < 6:
+        raise ValueError("Mega-Sena exige pelo menos 6 dezenas.")
+    comb = math.comb(n_dezenas, 6)
+    return comb * preco_6
+
+
+def calcular_custo_total(jogos: list[list[int]], preco_6: float) -> float:
+    total = 0.0
+    for jogo in jogos:
+        n = len(jogo)
+        total += preco_aposta_megasena(n, preco_6)
+    return total
+
+
+def prob_sena_pacote(jogos: list[list[int]]) -> float:
+    """
+    Probabilidade aproximada de ACERTAR a sena com pelo menos 1 jogo do pacote.
+    Para cada jogo, chance ~ C(n, 6)/C(60, 6). Combinação exata: 1 - prod(1 - p_i).
+    """
+    probs = []
+    for jogo in jogos:
+        n = len(jogo)
+        if n < 6:
+            continue
+        cobert = math.comb(n, 6)
+        p = cobert / TOTAL_COMBS_MEGA
+        probs.append(p)
+
+    prob_nao_acontece = 1.0
+    for p in probs:
+        prob_nao_acontece *= (1.0 - p)
+
+    return 1.0 - prob_nao_acontece
+
+
+# ==========================
+# FILTROS AVANÇADOS
+# ==========================
+def filtrar_jogos(
+    jogos: list[list[int]],
+    dezenas_fixas: list[int] | None = None,
+    dezenas_proibidas: list[int] | None = None,
+    soma_min: int | None = None,
+    soma_max: int | None = None,
+) -> list[list[int]]:
+    dezenas_fixas_set = set(dezenas_fixas or [])
+    dezenas_proibidas_set = set(dezenas_proibidas or [])
+
+    filtrados: list[list[int]] = []
+    for jogo in jogos:
+        s = set(jogo)
+
+        if dezenas_fixas_set and not dezenas_fixas_set.issubset(s):
+            continue
+
+        if dezenas_proibidas_set and (dezenas_proibidas_set & s):
+            continue
+
+        soma = sum(jogo)
+        if soma_min is not None and soma < soma_min:
+            continue
+        if soma_max is not None and soma > soma_max:
+            continue
+
+        filtrados.append(jogo)
+
+    return filtrados
 
 
 # ==========================
@@ -580,6 +665,61 @@ with st.sidebar:
     gerar_misto = False
     modo_geracao = "Uma estratégia"
 
+    preco_base_6 = st.number_input(
+        "Valor aposta simples (6 dezenas)",
+        min_value=1.0,
+        max_value=50.0,
+        value=PRECO_SIMPLES_6_DEFAULT,
+        step=0.5,
+        help=(
+            "Valor usado como base para calcular o custo das apostas. "
+            "Ajuste conforme a tabela oficial da Caixa ou da plataforma que você utiliza."
+        ),
+    )
+
+    # Filtros avançados (valem para qualquer modo)
+    st.markdown("### Filtros avançados (opcional)")
+    with st.expander("Restrições sobre os jogos gerados", expanded=False):
+        dezenas_fixas_txt = st.text_input(
+            "Dezenas fixas (sempre incluir)",
+            placeholder="Ex: 10, 53",
+            help="Essas dezenas devem aparecer em TODOS os jogos gerados após os filtros.",
+        )
+        dezenas_proibidas_txt = st.text_input(
+            "Dezenas proibidas (nunca incluir)",
+            placeholder="Ex: 1, 2, 3",
+            help="Essas dezenas serão removidas dos jogos (qualquer jogo que as contenha será descartado).",
+        )
+        soma_min = st.number_input(
+            "Soma mínima (opcional)",
+            min_value=0,
+            max_value=600,
+            value=0,
+            help="Use 0 para não aplicar limite mínimo de soma.",
+        )
+        soma_max = st.number_input(
+            "Soma máxima (opcional)",
+            min_value=0,
+            max_value=600,
+            value=0,
+            help="Use 0 para não aplicar limite máximo de soma.",
+        )
+
+    # Parse de filtros
+    def parse_lista(texto: str) -> list[int]:
+        if not texto:
+            return []
+        return [
+            int(x.strip())
+            for x in texto.split(",")
+            if x.strip().isdigit() and 1 <= int(x.strip()) <= 60
+        ]
+
+    dezenas_fixas = parse_lista(dezenas_fixas_txt)
+    dezenas_proibidas = parse_lista(dezenas_proibidas_txt)
+    soma_min_val = soma_min if soma_min > 0 else None
+    soma_max_val = soma_max if soma_max > 0 else None
+
     if pagina == "Gerar jogos":
         st.markdown("### Modo de geração")
 
@@ -593,7 +733,7 @@ with st.sidebar:
         )
 
         if modo_geracao == "Uma estratégia":
-            # ---------- MODO SIMPLES (COMO JÁ ERA) ----------
+            # ---------- MODO SIMPLES ----------
             st.markdown("### Estratégia de geração")
 
             estrategia = st.selectbox(
@@ -606,8 +746,7 @@ with st.sidebar:
                     "Sem sequências longas",
                     "Wheeling simples (base fixa)",
                 ],
-                help="Tipo de lógica usada para montar os jogos. "
-                     "Use a explicação na tela principal para entender cada uma.",
+                help="Tipo de lógica usada para montar os jogos.",
             )
 
             st.markdown("### Parâmetros básicos")
@@ -655,12 +794,6 @@ with st.sidebar:
                         help="Dezenas que não estão entre as mais nem entre as menos frequentes.",
                     )
 
-                with st.popover("O que são quentes, frias e neutras?"):
-                    st.write("• **Quentes**: saíram mais vezes no histórico.")
-                    st.write("• **Frias**: saíram poucas vezes ou estão há muitos concursos sem aparecer.")
-                    st.write("• **Neutras**: não se destacam nem como muito, nem como pouco sorteadas.")
-                    st.caption("Isso é apenas referência histórica, não aumenta a chance real de acerto.")
-
             if estrategia == "Sem sequências longas":
                 st.markdown("#### Controle de sequência")
                 limite_seq = st.slider(
@@ -693,7 +826,7 @@ with st.sidebar:
             st.markdown("### Parâmetros básicos do misto")
 
             tam_jogo_mix = st.slider(
-                "Dezenas por jogo",
+                "Dezenas por jogo (exceto wheeling)",
                 6,
                 15,
                 6,
@@ -707,7 +840,7 @@ with st.sidebar:
                 "Use 0 para ignorar alguma delas."
             )
 
-            jogos_misto = {}
+            jogos_misto: dict[str, int] = {}
 
             # Aleatório puro
             jogos_misto["Aleatório puro"] = st.number_input(
@@ -743,7 +876,7 @@ with st.sidebar:
             )
 
             # Quentes/Frias/Mix
-            with st.expander("Quantes/Frias/Mix (opcional)", expanded=False):
+            with st.expander("Quentes/Frias/Mix (opcional)", expanded=False):
                 jogos_misto["Quentes/Frias/Mix"] = st.number_input(
                     "Jogos Quentes/Frias/Mix",
                     min_value=0,
@@ -829,7 +962,6 @@ with st.sidebar:
             )
 
 
-
 # ==========================
 # EXPLICAÇÕES DAS ESTRATÉGIAS
 # ==========================
@@ -868,9 +1000,9 @@ if pagina == "Gerar jogos":
     # Cabeçalho
     st.title("Gerador de jogos da Mega-Sena")
     st.caption(
-        "1) Escolha a estratégia e os parâmetros na barra lateral. "
-        "2) Clique em **Gerar jogos**. "
-        "3) Use a lista ou a tabela para copiar ou baixar os jogos."
+        "1) Escolha o modo e as estratégias na barra lateral. "
+        "2) Ajuste filtros se quiser refinar. "
+        "3) Clique em **Gerar** para ver os jogos, custo e probabilidade aproximada."
     )
 
     # Bloco de resumo em duas colunas
@@ -889,38 +1021,40 @@ if pagina == "Gerar jogos":
         )
 
     with col2:
-        st.markdown("### Parâmetros atuais")
-        if "estrategia" in locals():
+        st.markdown("### Modo e parâmetros")
+        st.write(f"- Modo de geração: **{modo_geracao}**")
+        if modo_geracao == "Uma estratégia" and "estrategia" in locals():
             st.write(f"- Estratégia: **{estrategia}**")
             if "qtd_jogos" in locals():
-                st.write(f"- Jogos: **{qtd_jogos}** | Dezenas por jogo: **{tam_jogo}**")
-            if "q_quentes" in locals() and estrategia == "Quentes/Frias/Mix":
-                st.write(f"- Mix: {q_quentes} quentes / {q_frias} frias / {q_neutras} neutras")
-            if "limite_seq" in locals() and estrategia == "Sem sequências longas":
-                st.write(f"- Máx. sequência: {limite_seq} dezenas seguidas")
-            if estrategia == "Wheeling simples (base fixa)":
-                st.write(
-                    f"- Base: `{st.session_state.get('base_wheeling_value', '')}`"
-                )
-        else:
-            st.write("Defina a estratégia na barra lateral para ver o resumo.")
+                st.write(f"- Jogos solicitados: **{qtd_jogos}** | Dezenas por jogo: **{tam_jogo}**")
+        elif modo_geracao == "Misto de estratégias":
+            st.write("- Misto de estratégias configurado na barra lateral.")
+        if dezenas_fixas:
+            st.write(f"- Dezenas fixas: {sorted(dezenas_fixas)}")
+        if dezenas_proibidas:
+            st.write(f"- Dezenas proibidas: {sorted(dezenas_proibidas)}")
 
     st.divider()
 
     # Explicação da estratégia em expander
-    if "estrategia" in locals():
+    if modo_geracao == "Uma estratégia" and "estrategia" in locals():
         with st.expander("Como funciona esta estratégia?", expanded=False):
             st.write(explicacoes.get(estrategia, ""))
             st.caption(
                 "Observação: todas as combinações têm a mesma chance matemática. "
                 "As estratégias servem apenas para organizar a forma de jogar."
             )
+    elif modo_geracao == "Misto de estratégias":
+        with st.expander("O que cada estratégia faz?", expanded=False):
+            for nome, desc in explicacoes.items():
+                st.markdown(f"**{nome}**")
+                st.write(desc)
 
     # Tabs para jogos e tabela/export
-    tab_jogos, tab_tabela = st.tabs(["Jogos gerados", "Tabela / Exportar"])
+    tab_jogos, tab_tabela = st.tabs(["Jogos gerados", "Tabela / Resumo / Exportar"])
 
     jogos: list[list[int]] = []
-    jogos_info: list[dict] = []  # para guardar estratégia junto
+    jogos_info: list[dict] = []
 
     # ---------- GERAÇÃO MODO SIMPLES ----------
     if modo_geracao == "Uma estratégia" and gerar and "estrategia" in locals():
@@ -943,7 +1077,7 @@ if pagina == "Gerar jogos":
                 tam_jogo=tam_jogo,
                 limite_sequencia=limite_seq,
             )
-        elif estrategia == "Wheling simples (base fixa)":
+        elif estrategia == "Wheeling simples (base fixa)":
             try:
                 base_texto = st.session_state.get("base_wheeling_value", "")
                 base_dezenas = [
@@ -958,9 +1092,16 @@ if pagina == "Gerar jogos":
             except Exception:
                 jogos = []
 
-        jogos_info = [
-            {"estrategia": estrategia, "jogo": j} for j in jogos
-        ]
+        # aplica filtros
+        jogos = filtrar_jogos(
+            jogos,
+            dezenas_fixas=dezenas_fixas,
+            dezenas_proibidas=dezenas_proibidas,
+            soma_min=soma_min_val,
+            soma_max=soma_max_val,
+        )
+
+        jogos_info = [{"estrategia": estrategia, "jogo": j} for j in jogos]
 
     # ---------- GERAÇÃO MODO MISTO ----------
     if modo_geracao == "Misto de estratégias" and gerar_misto:
@@ -1043,24 +1184,70 @@ if pagina == "Gerar jogos":
             except Exception:
                 pass
 
+        # aplica filtros
+        jogos = filtrar_jogos(
+            jogos,
+            dezenas_fixas=dezenas_fixas,
+            dezenas_proibidas=dezenas_proibidas,
+            soma_min=soma_min_val,
+            soma_max=soma_max_val,
+        )
 
-    # Conteúdo das tabs
+        # re-sincroniza jogos_info com jogos filtrados
+        novo_info = []
+        for info in jogos_info:
+            if info["jogo"] in jogos:
+                novo_info.append(info)
+        jogos_info = novo_info
+
+    # ---------- EXIBIÇÃO ----------
     if not jogos and (gerar or gerar_misto):
         tab_jogos.warning(
-            "Nenhum jogo foi gerado. Revise os parâmetros na barra lateral e tente novamente."
+            "Nenhum jogo foi gerado após aplicar as regras e filtros. "
+            "Revise os parâmetros na barra lateral (especialmente filtros avançados) e tente novamente."
         )
         tab_tabela.info("Nenhum dado para exibir ainda.")
     elif not jogos:
         tab_jogos.write(
-            "Ajuste os parâmetros na barra lateral e clique em **Gerar jogos** para ver seus jogos aqui."
+            "Ajuste os parâmetros na barra lateral e clique em **Gerar** para ver seus jogos aqui."
         )
         tab_tabela.write("A tabela com os jogos aparecerá aqui após a geração.")
     else:
+        # painel de resumo (custo e probabilidade)
+        custo_total = calcular_custo_total(jogos, preco_base_6)
+        prob_total = prob_sena_pacote(jogos)
+
         with tab_jogos:
             st.markdown("#### Lista de jogos")
-            st.caption(
-                "Use esta lista para visualizar rapidamente e ver de qual estratégia cada jogo veio."
-            )
+            st.caption("Cada linha mostra o número do jogo, a estratégia (quando aplicável) e as dezenas.")
+
+            # resumo rápido acima
+            colr1, colr2, colr3 = st.columns(3)
+            with colr1:
+                st.metric("Quantidade de jogos", len(jogos))
+            with colr2:
+                st.metric(
+                    "Custo total estimado",
+                    f"R$ {custo_total:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."),
+                    help=(
+                        "Valor aproximado calculado a partir do preço base informado. "
+                        "Os valores reais podem variar conforme a tabela oficial."
+                    ),
+                )
+            with colr3:
+                if prob_total > 0:
+                    inv = 1.0 / prob_total
+                    st.metric(
+                        "Chance aprox. de 1 Sena",
+                        f"1 em {inv:,.0f}".replace(",", "."),
+                        help=(
+                            "Probabilidade aproximada de acertar a sena com pelo menos 1 jogo "
+                            "deste pacote, considerando combinações C(n,6)/C(60,6)."
+                        ),
+                    )
+                else:
+                    st.metric("Chance aprox. de 1 Sena", "N/A")
+
             col_left, col_center, col_right = st.columns([1, 2, 1])
             with col_center:
                 for i, info in enumerate(jogos_info, start=1):
@@ -1069,16 +1256,18 @@ if pagina == "Gerar jogos":
                     st.code(f"{i:02d} - {nome_est}: {formatar_jogo(jogo)}")
 
         with tab_tabela:
-            st.markdown("#### Tabela completa e exportação")
+            st.markdown("#### Tabela completa, resumo e exportação")
             st.caption("Inclui uma coluna com a estratégia usada em cada jogo.")
 
-            # montar DF com coluna de estratégia
-            max_len = max(len(j["jogo"]) for j in jogos_info)
             dados = []
             for info in jogos_info:
                 row = {"estrategia": info["estrategia"]}
                 for idx, d in enumerate(info["jogo"], start=1):
                     row[f"d{idx}"] = d
+                row["soma"] = sum(info["jogo"])
+                pares, impares = pares_impares(info["jogo"])
+                row["pares"] = pares
+                row["impares"] = impares
                 dados.append(row)
 
             jogos_df = pd.DataFrame(dados)
@@ -1092,7 +1281,6 @@ if pagina == "Gerar jogos":
                 mime="text/csv",
                 use_container_width=True,
             )
-
 
 else:
     pagina_analises(df_concursos, freq_df)
