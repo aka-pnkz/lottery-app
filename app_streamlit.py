@@ -356,20 +356,37 @@ def simular_premios(
 def simular_multi_concursos(
     jogos: list[list[int]],
     concursos: pd.DataFrame,
+    show_progress: bool = False,
 ) -> pd.DataFrame:
     """
-    Simula os jogos contra vários concursos do histórico e devolve distribuição de acertos. [web:101][web:193]
+    Simula os jogos contra vários concursos do histórico e devolve
+    distribuição de acertos. Quando show_progress=True, exibe barra
+    de progresso durante o processamento. [web:281][web:282]
     """
     dezenas_cols = [f"d{i}" for i in range(1, 7)]
     tot_acertos: dict[int, int] = {}
     total_jogos = len(jogos)
     total_concursos = len(concursos)
 
-    for _, row in concursos[dezenas_cols].iterrows():
+    progress_bar = None
+    if show_progress:
+        progress_bar = st.progress(0, text="Simulando concursos...")
+
+    for idx, (_, row) in enumerate(concursos[dezenas_cols].iterrows(), start=1):
         sorteio = set(int(row[c]) for c in dezenas_cols)
         for jogo in jogos:
             acertos = len(set(jogo) & sorteio)
             tot_acertos[acertos] = tot_acertos.get(acertos, 0) + 1
+
+        if show_progress and progress_bar is not None and total_concursos > 0:
+            progress = int(idx / total_concursos * 100)
+            progress_bar.progress(
+                progress,
+                text=f"Simulando concursos... {progress}%",
+            )
+
+    if show_progress and progress_bar is not None:
+        progress_bar.empty()
 
     linhas = []
     total_comb = total_jogos * total_concursos
@@ -954,7 +971,7 @@ if pagina == "Gerar jogos":
         ["Jogos gerados", "Tabela / Resumo / Exportar", "Análise & Simulação"]
     )
 
-    # Começa usando o que está na sessão
+    # Inicialmente, usa o que está em sessão
     jogos: list[list[int]] = st.session_state["jogos"]
     jogos_info: list[dict] = st.session_state["jogos_info"]
 
@@ -1332,7 +1349,14 @@ if pagina == "Gerar jogos":
                 concursos_multi = df_concursos.sort_values(
                     "concurso", ascending=False
                 ).head(qtd_hist)
-                df_multi = simular_multi_concursos(jogos, concursos_multi)
+
+                with st.spinner("Rodando simulação em vários concursos, aguarde..."):
+                    df_multi = simular_multi_concursos(
+                        jogos,
+                        concursos_multi,
+                        show_progress=True,
+                    )
+
                 st.dataframe(
                     df_multi.sort_values("acertos"),
                     hide_index=True,
