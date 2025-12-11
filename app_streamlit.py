@@ -651,6 +651,15 @@ except Exception as e:
 
 
 # ==========================
+# SESSION STATE – JOGOS
+# ==========================
+if "jogos" not in st.session_state:
+    st.session_state["jogos"] = []
+if "jogos_info" not in st.session_state:
+    st.session_state["jogos_info"] = []
+
+
+# ==========================
 # SIDEBAR
 # ==========================
 with st.sidebar:
@@ -945,10 +954,11 @@ if pagina == "Gerar jogos":
         ["Jogos gerados", "Tabela / Resumo / Exportar", "Análise & Simulação"]
     )
 
-    jogos: list[list[int]] = []
-    jogos_info: list[dict] = []
+    # Começa usando o que está na sessão
+    jogos: list[list[int]] = st.session_state["jogos"]
+    jogos_info: list[dict] = st.session_state["jogos_info"]
 
-    # GERAÇÃO SIMPLES
+    # ---------- GERAÇÃO SIMPLES ----------
     if modo_geracao == "Uma estratégia" and gerar and "estrategia" in locals():
         if estrategia == "Aleatório puro":
             jogos = gerar_aleatorio_puro(int(qtd_jogos), tam_jogo)
@@ -993,7 +1003,7 @@ if pagina == "Gerar jogos":
         )
         jogos_info = [{"estrategia": estrategia, "jogo": j} for j in jogos]
 
-    # GERAÇÃO MISTA
+    # ---------- GERAÇÃO MISTA ----------
     if modo_geracao == "Misto de estratégias" and gerar_misto:
         jogos = []
         jogos_info = []
@@ -1077,9 +1087,9 @@ if pagina == "Gerar jogos":
         jogos = [info["jogo"] for info in novo_info]
         jogos_info = novo_info
 
-    # ORÇAMENTO
+    # ---------- ORÇAMENTO (só quando gerar/gerar_misto) ----------
     aviso_orcamento = ""
-    if jogos and orcamento_max > 0:
+    if (gerar or gerar_misto) and jogos and orcamento_max > 0:
         jogos_dentro = []
         jogos_info_dentro = []
         custo_acum = 0.0
@@ -1100,7 +1110,16 @@ if pagina == "Gerar jogos":
         jogos = jogos_dentro
         jogos_info = jogos_info_dentro
 
-    # EXIBIÇÃO
+    # ---------- ATUALIZA SESSION_STATE SE HOUVE NOVA GERAÇÃO ----------
+    if (gerar or gerar_misto) and jogos:
+        st.session_state["jogos"] = jogos
+        st.session_state["jogos_info"] = jogos_info
+    else:
+        # Em interações sem geração, reusa o que estava salvo
+        jogos = st.session_state["jogos"]
+        jogos_info = st.session_state["jogos_info"]
+
+    # ---------- EXIBIÇÃO ----------
     if not jogos and (gerar or gerar_misto):
         tab_jogos.warning(
             "Nenhum jogo foi gerado após aplicar filtros e orçamento. "
