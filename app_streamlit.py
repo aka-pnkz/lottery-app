@@ -16,6 +16,73 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
+# CSS global leve para embelezar (não requer arquivo externo). [web:361][web:372][web:375]
+def inject_global_css() -> None:
+    st.markdown(
+        """
+        <style>
+        /* Fundo geral levemente cinza-azulado */
+        .stApp {
+            background-color: #0f172a0d;
+        }
+
+        /* Título principal mais destacado */
+        .main-title {
+            font-size: 2.0rem;
+            font-weight: 700;
+            margin-bottom: 0.25rem;
+        }
+        .main-subtitle {
+            font-size: 0.9rem;
+            color: #6b7280;
+            margin-bottom: 0.75rem;
+        }
+
+        /* Cards de métricas mais modernos */
+        div[data-testid="metric-container"] {
+            background-color: #ffffff;
+            padding: 0.75rem 0.9rem;
+            border-radius: 0.75rem;
+            border: 1px solid #e5e7eb;
+            box-shadow: 0 1px 3px rgba(15,23,42,0.08);
+        }
+        div[data-testid="metric-container"] > label {
+            font-size: 0.8rem;
+            color: #6b7280;
+        }
+
+        /* Tabs com borda suave */
+        .stTabs [data-baseweb="tab-list"] {
+            gap: 0.25rem;
+        }
+        .stTabs [data-baseweb="tab"] {
+            padding: 0.3rem 0.9rem;
+            border-radius: 999px;
+            background-color: #e5e7eb33;
+        }
+        .stTabs [aria-selected="true"] {
+            background-color: #111827;
+            color: #f9fafb;
+        }
+
+        /* Dataframes: cabeçalho e linhas mais compactos */
+        .stDataFrame thead tr th {
+            font-size: 0.80rem;
+            padding-top: 0.4rem;
+            padding-bottom: 0.4rem;
+        }
+        .stDataFrame tbody tr td {
+            font-size: 0.80rem;
+            padding-top: 0.25rem;
+            padding-bottom: 0.25rem;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+inject_global_css()
+
 CSV_PATH = "historico_mega_sena.csv"
 
 PRECO_SIMPLES_6_DEFAULT = 7.50
@@ -297,7 +364,7 @@ def gerar_wheeling_simples(
     max_jogos: int,
 ) -> list[list[int]]:
     """
-    Desdobramento simples: gera combinações de 6 dezenas dentro de uma base fixa. [web:196][web:323]
+    Desdobramento simples: gera combinações de 6 dezenas dentro de uma base fixa. [web:196]
     """
     base_ordenada = sorted(set(base_dezenas))
     if len(base_ordenada) < 6:
@@ -1209,10 +1276,15 @@ explicacoes = {
 # CORPO – PÁGINAS
 # ==========================
 if pagina == "Gerar jogos":
-    st.title("Gerador de jogos da Mega-Sena")
-    st.caption(
-        "Escolha o modo e as estratégias na barra lateral, ajuste filtros/opções de custo "
-        "e clique em **Gerar** para ver jogos, custo e análises."
+    # Título com classes CSS customizadas
+    st.markdown(
+        "<div class='main-title'>Gerador de jogos da Mega-Sena</div>",
+        unsafe_allow_html=True,
+    )
+    st.markdown(
+        "<div class='main-subtitle'>Escolha o modo e as estratégias na barra lateral, "
+        "ajuste filtros/opções de custo e clique em <b>Gerar</b> para ver seus jogos.</div>",
+        unsafe_allow_html=True,
     )
 
     col1, col2 = st.columns(2)
@@ -1536,7 +1608,24 @@ if pagina == "Gerar jogos":
                 dados.append(row)
 
             jogos_df = pd.DataFrame(dados)
-            st.dataframe(jogos_df, hide_index=True, use_container_width=True)
+
+            # Estilo visual: gradiente no score e destaque de padrões extremos. [web:368][web:376][web:377]
+            def highlight_extreme(row):
+                color = "background-color: #fee2e2" if row.get("padrao_extremo", False) else ""
+                return [color] * len(row)
+
+            styled_jogos = (
+                jogos_df
+                .style
+                .background_gradient(
+                    subset=["score_heuristico"],
+                    cmap="Greens",
+                )
+                .apply(highlight_extreme, axis=1)
+                .hide(axis="index")
+            )
+
+            st.dataframe(styled_jogos, use_container_width=True)
 
             csv_data = jogos_df.to_csv(index=False).encode("utf-8")
             st.download_button(
@@ -1637,7 +1726,9 @@ if pagina == "Gerar jogos":
             else:
                 st.info("Nenhuma estratégia para comparar no pacote atual.")
 
-            st.markdown("---")
+            st.divider()
+            st.subheader("Simulações dos seus jogos")
+
             st.markdown("#### Simulação de acertos")
 
             modo_sim = st.radio(
@@ -1693,7 +1784,7 @@ if pagina == "Gerar jogos":
             st.markdown("#### Simulação contra vários concursos do histórico")
 
             sim_multi = st.checkbox(
-                "Simular os jogos contra vários concursos do histórico"
+                "Simular este pacote de jogos contra vários concursos do histórico"
             )
             if sim_multi:
                 modo_janela = st.radio(
@@ -1768,7 +1859,6 @@ if pagina == "Gerar jogos":
 
                     # Melhor(es) jogo(s) na janela simulada
                     if not df_multi_jogo.empty:
-                        # Adiciona representação textual do jogo
                         mapa_jogos = {
                             i + 1: formatar_jogo(j) for i, j in enumerate(jogos)
                         }
