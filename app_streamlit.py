@@ -21,6 +21,12 @@ CSV_PATH = "historico_mega_sena.csv"
 PRECO_SIMPLES_6_DEFAULT = 7.50
 TOTAL_COMBS_MEGA = math.comb(60, 6)
 
+# Primos de 1 a 60 (usados para análise por jogo). [web:332][web:335]
+PRIMOS_ATE_60 = {
+    2, 3, 5, 7, 11, 13, 17, 19,
+    23, 29, 31, 37, 41, 43, 47, 53, 59
+}
+
 
 # ==========================
 # CARGA E ESTATÍSTICAS BÁSICAS
@@ -73,6 +79,72 @@ def tem_sequencia_longa(jogo: list[int], limite: int = 3) -> bool:
         else:
             atual = 1
     return False
+
+
+def contar_primos(jogo: list[int]) -> int:
+    return sum(1 for d in jogo if d in PRIMOS_ATE_60)
+
+
+def quadrantes_volante(jogo: list[int]) -> tuple[int, int, int, int]:
+    """
+    Divide 1–60 em quatro quadrantes: 1–15, 16–30, 31–45, 46–60.
+    """
+    q1 = sum(1 for d in jogo if 1 <= d <= 15)
+    q2 = sum(1 for d in jogo if 16 <= d <= 30)
+    q3 = sum(1 for d in jogo if 31 <= d <= 45)
+    q4 = sum(1 for d in jogo if 46 <= d <= 60)
+    return q1, q2, q3, q4
+
+
+def score_heuristico_jogo(
+    faixa_soma: str,
+    n_primos: int,
+    pares: int,
+    impares: int,
+    baixos: int,
+    altos: int,
+    repeticoes_ultimo: int,
+) -> float:
+    """
+    Score heurístico 0–10 para comparar jogos internamente.
+    Não aumenta chance real, é apenas uma régua relativa. [web:320][web:324]
+    """
+    score = 10.0
+
+    # Soma
+    if faixa_soma == "dentro do comum":
+        score += 0.5
+    elif faixa_soma == "baixa":
+        score -= 0.5
+    else:  # muito baixa ou alta/muito alta
+        score -= 1.0
+
+    # Par/ímpar
+    if pares == 3 and impares == 3:
+        score += 0.5
+    elif pares in (2, 4) and impares in (2, 4):
+        score += 0.2
+    else:
+        score -= 0.3
+
+    # Primos
+    if n_primos in (2, 3):
+        score += 0.3
+    elif n_primos == 0 or n_primos >= 5:
+        score -= 0.5
+
+    # Baixos/altos
+    if baixos > 0 and altos > 0:
+        score += 0.2
+    else:
+        score -= 0.5
+
+    # Repetição em relação ao último concurso (muitas repetições penalizam um pouco)
+    if repeticoes_ultimo >= 3:
+        score -= 0.3
+
+    # Clamp 0–10
+    return max(0.0, min(10.0, score))
 
 
 # ==========================
@@ -225,7 +297,7 @@ def gerar_wheeling_simples(
     max_jogos: int,
 ) -> list[list[int]]:
     """
-    Desdobramento simples: gera combinações de 6 dezenas dentro de uma base fixa. [web:180][web:181]
+    Desdobramento simples: gera combinações de 6 dezenas dentro de uma base fixa. [web:196][web:323]
     """
     base_ordenada = sorted(set(base_dezenas))
     if len(base_ordenada) < 6:
@@ -249,7 +321,7 @@ def formatar_jogo(jogo: list[int]) -> str:
 # ==========================
 def preco_aposta_megasena(n_dezenas: int, preco_6: float) -> float:
     """
-    Valor aproximado de UMA aposta com n dezenas: C(n, 6) * preço_base. [web:96][web:186]
+    Valor aproximado de UMA aposta com n dezenas: C(n, 6) * preço_base. [web:328]
     """
     if n_dezenas < 6:
         raise ValueError("Mega-Sena exige pelo menos 6 dezenas.")
@@ -267,7 +339,7 @@ def calcular_custo_total(jogos: list[list[int]], preco_6: float) -> float:
 
 def cobertura_jogo(jogo: list[int]) -> tuple[int, float]:
     """
-    Retorna (comb_6, fator) onde comb_6 = C(n,6) e fator = comb_6 / C(60,6). [web:98][web:186]
+    Retorna (comb_6, fator) onde comb_6 = C(n,6) e fator = comb_6 / C(60,6). [web:328]
     """
     n = len(jogo)
     if n < 6:
@@ -279,7 +351,7 @@ def cobertura_jogo(jogo: list[int]) -> tuple[int, float]:
 
 def prob_sena_pacote(jogos: list[list[int]]) -> float:
     """
-    Probabilidade aproximada de acertar a sena com pelo menos 1 jogo. [web:98][web:106]
+    Probabilidade aproximada de acertar a sena com pelo menos 1 jogo. [web:327]
     """
     probs = []
     for jogo in jogos:
@@ -357,11 +429,12 @@ def simular_multi_concursos(
     jogos: list[list[int]],
     concursos: pd.DataFrame,
     show_progress: bool = False,
-) -> tuple[pd.DataFrame, pd.DataFrame]:
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """
     Simula os jogos contra vários concursos do histórico e devolve:
     - df_dist: distribuição global de acertos
-    - df_por_concurso: resumo por concurso (máx acertos, quantas quadras/quinas/senas). [web:228][web:236]
+    - df_por_concurso: resumo por concurso (máx acertos, quadras/quinas/senas)
+    - df_por_jogo: desempenho agregado de cada jogo na janela simulada. [web:229][web:236]
     """
     dezenas_cols = [f"d{i}" for i in range(1, 7)]
     tot_acertos_global: dict[int, int] = {}
@@ -369,6 +442,18 @@ def simular_multi_concursos(
 
     total_jogos = len(jogos)
     total_concursos = len(concursos)
+
+    # Estatísticas por jogo (para descobrir "melhor jogo" na janela)
+    stats_por_jogo = {
+        idx: {
+            "jogo_id": idx + 1,
+            "quadras": 0,
+            "quinas": 0,
+            "senas": 0,
+            "total_acertos_4oumais": 0,
+        }
+        for idx in range(total_jogos)
+    }
 
     progress_bar = None
     if show_progress:
@@ -378,10 +463,19 @@ def simular_multi_concursos(
         sorteio = set(int(row[c]) for c in dezenas_cols)
         contagem_concurso: dict[int, int] = {}
 
-        for jogo in jogos:
+        for j_idx, jogo in enumerate(jogos):
             acertos = len(set(jogo) & sorteio)
             tot_acertos_global[acertos] = tot_acertos_global.get(acertos, 0) + 1
             contagem_concurso[acertos] = contagem_concurso.get(acertos, 0) + 1
+
+            if acertos >= 4:
+                stats_por_jogo[j_idx]["total_acertos_4oumais"] += 1
+                if acertos == 4:
+                    stats_por_jogo[j_idx]["quadras"] += 1
+                elif acertos == 5:
+                    stats_por_jogo[j_idx]["quinas"] += 1
+                elif acertos == 6:
+                    stats_por_jogo[j_idx]["senas"] += 1
 
         max_acertos = max(contagem_concurso.keys()) if contagem_concurso else 0
         resumo_concursos.append(
@@ -426,7 +520,9 @@ def simular_multi_concursos(
             + df_por_concurso["qtd_senas"]
         ) > 0
 
-    return df_dist, df_por_concurso
+    df_por_jogo = pd.DataFrame(list(stats_por_jogo.values()))
+
+    return df_dist, df_por_concurso, df_por_jogo
 
 
 # ==========================
@@ -564,7 +660,7 @@ def calcular_pares_trios(
 def calcular_ciclos(df_concursos: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
     """
     Calcula ciclos de dezenas: cada ciclo começa em um concurso e termina
-    quando todas as 60 dezenas já saíram ao menos uma vez. [web:313][web:314][web:315]
+    quando todas as 60 dezenas já saíram ao menos uma vez. [web:313][web:314][web:316]
     """
     dezenas_cols = ["d1", "d2", "d3", "d4", "d5", "d6"]
     df_ord = df_concursos.sort_values("concurso").reset_index(drop=True)
@@ -841,6 +937,14 @@ except FileNotFoundError:
 except Exception as e:
     st.error(f"Ocorreu um erro ao carregar/usar os dados: {e}")
     st.stop()
+
+# Conjunto de dezenas do último concurso (para repetição por jogo)
+DEZENAS_ULTIMO_CONCURSO: set[int] = set()
+if not df_concursos.empty:
+    _last = df_concursos.sort_values("concurso").iloc[-1]
+    DEZENAS_ULTIMO_CONCURSO = {
+        int(_last[f"d{i}"]) for i in range(1, 7)
+    }
 
 
 # ==========================
@@ -1363,23 +1467,22 @@ if pagina == "Gerar jogos":
         # TAB TABELA
         with tab_tabela:
             dados = []
-            for info in jogos_info:
+            for idx_global, info in enumerate(jogos_info, start=1):
                 jogo = info["jogo"]
-                row = {"estrategia": info["estrategia"]}
-                for idx, d in enumerate(jogo, start=1):
-                    row[f"d{idx}"] = d
+                row = {
+                    "jogo_id": idx_global,
+                    "estrategia": info["estrategia"],
+                }
+                for i_d, d in enumerate(jogo, start=1):
+                    row[f"d{i_d}"] = d
+
                 soma_jogo = sum(jogo)
                 pares, impares = pares_impares(jogo)
                 bax, alt = baixos_altos(jogo)
                 comb_6, fator = cobertura_jogo(jogo)
-
-                row["soma"] = soma_jogo
-                row["pares"] = pares
-                row["impares"] = impares
-                row["baixos"] = bax
-                row["altos"] = alt
-                row["comb_6"] = comb_6
-                row["fator_simples"] = fator
+                n_primos = contar_primos(jogo)
+                q1, q2, q3, q4 = quadrantes_volante(jogo)
+                repet_ultimo = len(set(jogo) & DEZENAS_ULTIMO_CONCURSO)
 
                 # Faixa de soma e padrão extremo
                 if soma_jogo <= 120:
@@ -1399,8 +1502,36 @@ if pagina == "Gerar jogos":
                     or faixa_soma in ("muito baixa", "alta/muito alta")
                 )
 
-                row["faixa_soma"] = faixa_soma
-                row["padrao_extremo"] = padrao_extremo
+                score_h = score_heuristico_jogo(
+                    faixa_soma=faixa_soma,
+                    n_primos=n_primos,
+                    pares=pares,
+                    impares=impares,
+                    baixos=bax,
+                    altos=alt,
+                    repeticoes_ultimo=repet_ultimo,
+                )
+
+                row.update(
+                    {
+                        "soma": soma_jogo,
+                        "faixa_soma": faixa_soma,
+                        "pares": pares,
+                        "impares": impares,
+                        "baixos": bax,
+                        "altos": alt,
+                        "comb_6": comb_6,
+                        "fator_simples": fator,
+                        "n_primos": n_primos,
+                        "q1_1a15": q1,
+                        "q2_16a30": q2,
+                        "q3_31a45": q3,
+                        "q4_46a60": q4,
+                        "repeticoes_ultimo_concurso": repet_ultimo,
+                        "padrao_extremo": padrao_extremo,
+                        "score_heuristico": round(score_h, 2),
+                    }
+                )
 
                 dados.append(row)
 
@@ -1562,40 +1693,122 @@ if pagina == "Gerar jogos":
             st.markdown("#### Simulação contra vários concursos do histórico")
 
             sim_multi = st.checkbox(
-                "Simular os jogos contra vários concursos recentes"
+                "Simular os jogos contra vários concursos do histórico"
             )
             if sim_multi:
-                qtd_hist = st.slider(
-                    "Quantidade de concursos recentes",
-                    min_value=10,
-                    max_value=200,
-                    value=50,
-                    step=10,
+                modo_janela = st.radio(
+                    "Janela de concursos para simulação",
+                    ["Últimos N concursos", "Intervalo de concursos"],
+                    horizontal=True,
                 )
-                concursos_multi = df_concursos.sort_values(
-                    "concurso", ascending=False
-                ).head(qtd_hist)
 
-                with st.spinner("Rodando simulação em vários concursos, aguarde..."):
-                    df_multi, df_multi_conc = simular_multi_concursos(
-                        jogos,
-                        concursos_multi,
-                        show_progress=True,
+                if modo_janela == "Últimos N concursos":
+                    qtd_hist = st.slider(
+                        "Quantidade de concursos recentes",
+                        min_value=10,
+                        max_value=200,
+                        value=50,
+                        step=10,
+                    )
+                    concursos_multi = df_concursos.sort_values(
+                        "concurso", ascending=False
+                    ).head(qtd_hist)
+                else:
+                    conc_min = int(df_concursos["concurso"].min())
+                    conc_max = int(df_concursos["concurso"].max())
+                    col_int1, col_int2 = st.columns(2)
+                    with col_int1:
+                        inicio_int = st.number_input(
+                            "Concurso inicial",
+                            min_value=conc_min,
+                            max_value=conc_max,
+                            value=conc_min,
+                            step=1,
+                        )
+                    with col_int2:
+                        fim_int = st.number_input(
+                            "Concurso final",
+                            min_value=conc_min,
+                            max_value=conc_max,
+                            value=conc_max,
+                            step=1,
+                        )
+                    if inicio_int > fim_int:
+                        st.warning("Concurso inicial não pode ser maior que o final.")
+                        concursos_multi = pd.DataFrame(columns=df_concursos.columns)
+                    else:
+                        concursos_multi = df_concursos[
+                            (df_concursos["concurso"] >= inicio_int)
+                            & (df_concursos["concurso"] <= fim_int)
+                        ].sort_values("concurso")
+
+                if concursos_multi.empty:
+                    st.info("Nenhum concurso na janela selecionada.")
+                else:
+                    with st.spinner("Rodando simulação em vários concursos, aguarde..."):
+                        df_multi, df_multi_conc, df_multi_jogo = simular_multi_concursos(
+                            jogos,
+                            concursos_multi,
+                            show_progress=True,
+                        )
+
+                    st.markdown("**Distribuição global de acertos (todos os concursos simulados)**")
+                    st.dataframe(
+                        df_multi.sort_values("acertos"),
+                        hide_index=True,
+                        use_container_width=True,
                     )
 
-                st.markdown("**Distribuição global de acertos (todos os concursos simulados)**")
-                st.dataframe(
-                    df_multi.sort_values("acertos"),
-                    hide_index=True,
-                    use_container_width=True,
-                )
+                    st.markdown("**Resumo por concurso (máx acertos e prêmios)**")
+                    st.dataframe(
+                        df_multi_conc.sort_values("concurso"),
+                        hide_index=True,
+                        use_container_width=True,
+                    )
 
-                st.markdown("**Resumo por concurso (máx acertos e prêmios)**")
-                st.dataframe(
-                    df_multi_conc.sort_values("concurso"),
-                    hide_index=True,
-                    use_container_width=True,
-                )
+                    # Melhor(es) jogo(s) na janela simulada
+                    if not df_multi_jogo.empty:
+                        # Adiciona representação textual do jogo
+                        mapa_jogos = {
+                            i + 1: formatar_jogo(j) for i, j in enumerate(jogos)
+                        }
+                        df_multi_jogo["jogo"] = df_multi_jogo["jogo_id"].map(
+                            mapa_jogos
+                        )
+
+                        df_multi_jogo["score_historico"] = (
+                            df_multi_jogo["senas"] * 100
+                            + df_multi_jogo["quinas"] * 10
+                            + df_multi_jogo["quadras"]
+                        )
+
+                        top_hist = df_multi_jogo.sort_values(
+                            ["score_historico", "senas", "quinas", "quadras"],
+                            ascending=False,
+                        ).head(10)
+
+                        st.markdown(
+                            "**Jogos com melhor desempenho histórico na janela simulada**"
+                        )
+                        st.caption(
+                            "Baseado apenas em quantidade de quadras/quinas/senas "
+                            "na janela escolhida; não implica aumento de chance futura."
+                        )
+                        st.dataframe(
+                            top_hist[
+                                [
+                                    "jogo_id",
+                                    "jogo",
+                                    "quadras",
+                                    "quinas",
+                                    "senas",
+                                    "total_acertos_4oumais",
+                                    "score_historico",
+                                ]
+                            ],
+                            hide_index=True,
+                            use_container_width=True,
+                        )
 
 else:
     pagina_analises(df_concursos, freq_df)
