@@ -1609,23 +1609,38 @@ if pagina == "Gerar jogos":
 
             jogos_df = pd.DataFrame(dados)
 
-            # Estilo visual: gradiente no score e destaque de padrões extremos. [web:368][web:376][web:377]
+            # Estilo visual: destaque de padrões extremos (linha inteira)
             def highlight_extreme(row):
                 color = "background-color: #fee2e2" if row.get("padrao_extremo", False) else ""
                 return [color] * len(row)
-
+            
+            # Cor de fundo do score, sem usar matplotlib
+            def color_score(val):
+                try:
+                    v = float(val)
+                except (TypeError, ValueError):
+                    return ""
+                if v >= 9:
+                    # verde mais forte
+                    return "background-color: #14532d; color: #ecfdf5; font-weight: 600;"
+                elif v >= 7:
+                    return "background-color: #16a34a33;"
+                elif v >= 5:
+                    return "background-color: #e5e7eb;"
+                else:
+                    # score baixo, levemente amarelado
+                    return "background-color: #fef3c7;"
+            
             styled_jogos = (
                 jogos_df
                 .style
-                .background_gradient(
-                    subset=["score_heuristico"],
-                    cmap="Greens",
-                )
                 .apply(highlight_extreme, axis=1)
+                .applymap(color_score, subset=["score_heuristico"])
                 .hide(axis="index")
             )
-
+            
             st.dataframe(styled_jogos, use_container_width=True)
+
 
             csv_data = jogos_df.to_csv(index=False).encode("utf-8")
             st.download_button(
