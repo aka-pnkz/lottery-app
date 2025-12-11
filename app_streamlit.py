@@ -357,14 +357,16 @@ def simular_multi_concursos(
     jogos: list[list[int]],
     concursos: pd.DataFrame,
     show_progress: bool = False,
-) -> pd.DataFrame:
+) -> tuple[pd.DataFrame, pd.DataFrame]:
     """
-    Simula os jogos contra vários concursos do histórico e devolve
-    distribuição de acertos. Quando show_progress=True, exibe barra
-    de progresso durante o processamento. [web:281][web:282]
+    Simula os jogos contra vários concursos do histórico e devolve:
+    - df_dist: distribuição global de acertos
+    - df_por_concurso: resumo por concurso (máx acertos, quantas quadras/quinas/senas). [web:228][web:236]
     """
     dezenas_cols = [f"d{i}" for i in range(1, 7)]
-    tot_acertos: dict[int, int] = {}
+    tot_acertos_global: dict[int, int] = {}
+    resumo_concursos: list[dict] = []
+
     total_jogos = len(jogos)
     total_concursos = len(concursos)
 
@@ -372,11 +374,26 @@ def simular_multi_concursos(
     if show_progress:
         progress_bar = st.progress(0, text="Simulando concursos...")
 
-    for idx, (_, row) in enumerate(concursos[dezenas_cols].iterrows(), start=1):
+    for idx, (_, row) in enumerate(concursos.iterrows(), start=1):
         sorteio = set(int(row[c]) for c in dezenas_cols)
+        contagem_concurso: dict[int, int] = {}
+
         for jogo in jogos:
             acertos = len(set(jogo) & sorteio)
-            tot_acertos[acertos] = tot_acertos.get(acertos, 0) + 1
+            tot_acertos_global[acertos] = tot_acertos_global.get(acertos, 0) + 1
+            contagem_concurso[acertos] = contagem_concurso.get(acertos, 0) + 1
+
+        max_acertos = max(contagem_concurso.keys()) if contagem_concurso else 0
+        resumo_concursos.append(
+            {
+                "concurso": int(row["concurso"]),
+                "data": row.get("data"),
+                "max_acertos_no_concurso": max_acertos,
+                "qtd_quadras": contagem_concurso.get(4, 0),
+                "qtd_quinas": contagem_concurso.get(5, 0),
+                "qtd_senas": contagem_concurso.get(6, 0),
+            }
+        )
 
         if show_progress and progress_bar is not None and total_concursos > 0:
             progress = int(idx / total_concursos * 100)
@@ -388,9 +405,9 @@ def simular_multi_concursos(
     if show_progress and progress_bar is not None:
         progress_bar.empty()
 
-    linhas = []
     total_comb = total_jogos * total_concursos
-    for acertos, qtd in sorted(tot_acertos.items()):
+    linhas = []
+    for acertos, qtd in sorted(tot_acertos_global.items()):
         linhas.append(
             {
                 "acertos": acertos,
@@ -399,7 +416,17 @@ def simular_multi_concursos(
                 "proporcao": qtd / total_comb if total_comb > 0 else 0,
             }
         )
-    return pd.DataFrame(linhas)
+    df_dist = pd.DataFrame(linhas)
+
+    df_por_concurso = pd.DataFrame(resumo_concursos)
+    if not df_por_concurso.empty:
+        df_por_concurso["teve_premio_4_ou_mais"] = (
+            df_por_concurso["qtd_quadras"]
+            + df_por_concurso["qtd_quinas"]
+            + df_por_concurso["qtd_senas"]
+        ) > 0
+
+    return df_dist, df_por_concurso
 
 
 # ==========================
@@ -534,6 +561,54 @@ def calcular_pares_trios(
     return df_pares, df_trios
 
 
+def calcular_ciclos(df_concursos: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
+    """
+    Calcula ciclos de dezenas: cada ciclo começa em um concurso e termina
+    quando todas as 60 dezenas já saíram ao menos uma vez. [web:313][web:314][web:315]
+    """
+    dezenas_cols = ["d1", "d2", "d3", "d4", "d5", "d6"]
+    df_ord = df_concursos.sort_values("concurso").reset_index(drop=True)
+
+    ciclos = []
+    dezenas_vistas: set[int] = set()
+    inicio_ciclo = None
+
+    for _, row in df_ord.iterrows():
+        conc = int(row["concurso"])
+        if inicio_ciclo is None:
+            inicio_ciclo = conc
+
+        for c in dezenas_cols:
+            dezenas_vistas.add(int(row[c]))
+
+        if len(dezenas_vistas) == 60:
+            ciclos.append(
+                {
+                    "ciclo_id": len(ciclos) + 1,
+                    "inicio_concurso": inicio_ciclo,
+                    "fim_concurso": conc,
+                    "qtd_concursos": conc - inicio_ciclo + 1,
+                }
+            )
+            dezenas_vistas = set()
+            inicio_ciclo = None
+
+    df_ciclos = pd.DataFrame(ciclos)
+
+    ciclo_atual = {
+        "inicio_concurso": inicio_ciclo,
+        "qtd_concursos": None,
+        "dezenas_faltando": [],
+    }
+    if inicio_ciclo is not None:
+        max_conc = int(df_ord["concurso"].max())
+        ciclo_atual["qtd_concursos"] = max_conc - inicio_ciclo + 1
+        dezenas_faltando = sorted(set(range(1, 61)) - dezenas_vistas)
+        ciclo_atual["dezenas_faltando"] = dezenas_faltando
+
+    return df_ciclos, ciclo_atual
+
+
 def pagina_analises(df_concursos: pd.DataFrame, freq_df: pd.DataFrame) -> None:
     st.title("Análises estatísticas da Mega-Sena")
     st.caption(
@@ -541,23 +616,32 @@ def pagina_analises(df_concursos: pd.DataFrame, freq_df: pd.DataFrame) -> None:
         "As análises são descritivas e não garantem aumento de chance em sorteios futuros."
     )
 
-    tab_freq, tab_padroes, tab_somas, tab_pares_trios, tab_ultimos = st.tabs(
+    (
+        tab_freq,
+        tab_padroes,
+        tab_somas,
+        tab_pares_trios,
+        tab_ciclos,
+        tab_ultimos,
+    ) = st.tabs(
         [
             "Frequência & Atraso",
             "Par/Ímpar & Baixa/Alta",
             "Soma das dezenas",
             "Pares & Trios",
+            "Ciclos & Quentes/Frios",
             "Últimos resultados",
         ]
     )
 
+    # FREQUÊNCIA & ATRASO + FREQUÊNCIA RECENTE
     with tab_freq:
         st.subheader("Frequência e atraso por dezena")
         atraso_df = calcular_atraso(freq_df, df_concursos)
 
         col1, col2 = st.columns(2)
         with col1:
-            st.markdown("#### Ordenado por frequência")
+            st.markdown("#### Ordenado por frequência total")
             st.dataframe(
                 freq_df.sort_values("frequencia", ascending=False).reset_index(
                     drop=True
@@ -566,7 +650,7 @@ def pagina_analises(df_concursos: pd.DataFrame, freq_df: pd.DataFrame) -> None:
                 use_container_width=True,
             )
         with col2:
-            st.markdown("#### Ordenado por atraso")
+            st.markdown("#### Ordenado por atraso atual")
             st.dataframe(
                 atraso_df.sort_values(
                     ["atraso_atual", "frequencia"], ascending=[False, False]
@@ -575,6 +659,41 @@ def pagina_analises(df_concursos: pd.DataFrame, freq_df: pd.DataFrame) -> None:
                 use_container_width=True,
             )
 
+        st.markdown("---")
+        st.markdown("#### Frequência recente vs total")
+        n_rec = st.slider(
+            "Concursos recentes para analisar",
+            min_value=20,
+            max_value=300,
+            value=50,
+            step=10,
+        )
+        df_recent = df_concursos.sort_values("concurso", ascending=False).head(n_rec)
+        freq_recent = calcular_frequencias(df_recent)
+        freq_recent = freq_recent.rename(columns={"frequencia": "freq_recente"})
+
+        freq_merge = freq_df.merge(freq_recent, on="dezena", how="left")
+        freq_merge["freq_recente"] = freq_merge["freq_recente"].fillna(0).astype(int)
+
+        colf1, colf2 = st.columns(2)
+        with colf1:
+            st.markdown("Top dezenas recentes (freq. recente)")
+            st.dataframe(
+                freq_merge.sort_values(
+                    "freq_recente", ascending=False
+                ).head(20),
+                hide_index=True,
+                use_container_width=True,
+            )
+        with colf2:
+            st.markdown("Top dezenas históricas (freq. total)")
+            st.dataframe(
+                freq_merge.sort_values("frequencia", ascending=False).head(20),
+                hide_index=True,
+                use_container_width=True,
+            )
+
+    # PAR / ÍMPAR & BAIXA / ALTA
     with tab_padroes:
         st.subheader("Distribuição de pares/ímpares e baixa/alta")
         df_padroes, dist_par_impar, dist_baixa_alta = (
@@ -592,6 +711,7 @@ def pagina_analises(df_concursos: pd.DataFrame, freq_df: pd.DataFrame) -> None:
                 use_container_width=True,
             )
 
+    # SOMA
     with tab_somas:
         st.subheader("Soma das dezenas por concurso")
         df_somas, dist_faixas = calcular_somas(df_concursos)
@@ -612,6 +732,7 @@ def pagina_analises(df_concursos: pd.DataFrame, freq_df: pd.DataFrame) -> None:
                 use_container_width=True,
             )
 
+    # PARES & TRIOS
     with tab_pares_trios:
         st.subheader("Pares e trios mais frequentes")
         top_n = st.slider(
@@ -631,6 +752,61 @@ def pagina_analises(df_concursos: pd.DataFrame, freq_df: pd.DataFrame) -> None:
             st.markdown("#### Trios mais frequentes")
             st.dataframe(df_trios, hide_index=True, use_container_width=True)
 
+    # CICLOS & QUENTES/FRIOS
+    with tab_ciclos:
+        st.subheader("Ciclos das dezenas")
+        df_ciclos, ciclo_atual = calcular_ciclos(df_concursos)
+
+        colc1, colc2 = st.columns(2)
+        with colc1:
+            st.markdown("#### Ciclos fechados")
+            if df_ciclos.empty:
+                st.info("Nenhum ciclo completo encontrado no histórico atual.")
+            else:
+                st.dataframe(df_ciclos, hide_index=True, use_container_width=True)
+
+        with colc2:
+            st.markdown("#### Ciclo em andamento")
+            if ciclo_atual["inicio_concurso"] is None:
+                st.write("Nenhum ciclo em andamento (ciclo atual acabou de fechar).")
+            else:
+                st.write(
+                    f"Início do ciclo: concurso {ciclo_atual['inicio_concurso']}"
+                )
+                st.write(
+                    f"Concursos no ciclo atual: {ciclo_atual['qtd_concursos']}"
+                )
+                dezenas_faltando = ciclo_atual.get("dezenas_faltando", [])
+                if dezenas_faltando:
+                    st.write(
+                        f"Dezenas que ainda não saíram neste ciclo ({len(dezenas_faltando)}): "
+                        + ", ".join(f"{d:02d}" for d in dezenas_faltando)
+                    )
+                else:
+                    st.write("Todas as dezenas já saíram, ciclo deveria fechar em breve.")
+
+        st.markdown("---")
+        st.subheader("Números quentes, frios e atrasados")
+
+        atraso_df = calcular_atraso(freq_df, df_concursos)
+        top_quentes = freq_df.sort_values("frequencia", ascending=False).head(20)
+        top_frios = freq_df.sort_values("frequencia", ascending=True).head(20)
+        top_atrasados = atraso_df.sort_values(
+            ["atraso_atual", "frequencia"], ascending=[False, False]
+        ).head(20)
+
+        colq1, colq2, colq3 = st.columns(3)
+        with colq1:
+            st.markdown("**Mais sorteadas (quentes)**")
+            st.dataframe(top_quentes, hide_index=True, use_container_width=True)
+        with colq2:
+            st.markdown("**Menos sorteadas (frias)**")
+            st.dataframe(top_frios, hide_index=True, use_container_width=True)
+        with colq3:
+            st.markdown("**Mais atrasadas**")
+            st.dataframe(top_atrasados, hide_index=True, use_container_width=True)
+
+    # ÚLTIMOS RESULTADOS
     with tab_ultimos:
         st.subheader("Últimos resultados da Mega-Sena (histórico local)")
         qtd_ultimos = st.slider(
@@ -1132,7 +1308,6 @@ if pagina == "Gerar jogos":
         st.session_state["jogos"] = jogos
         st.session_state["jogos_info"] = jogos_info
     else:
-        # Em interações sem geração, reusa o que estava salvo
         jogos = st.session_state["jogos"]
         jogos_info = st.session_state["jogos_info"]
 
@@ -1193,16 +1368,40 @@ if pagina == "Gerar jogos":
                 row = {"estrategia": info["estrategia"]}
                 for idx, d in enumerate(jogo, start=1):
                     row[f"d{idx}"] = d
-                row["soma"] = sum(jogo)
+                soma_jogo = sum(jogo)
                 pares, impares = pares_impares(jogo)
                 bax, alt = baixos_altos(jogo)
                 comb_6, fator = cobertura_jogo(jogo)
+
+                row["soma"] = soma_jogo
                 row["pares"] = pares
                 row["impares"] = impares
                 row["baixos"] = bax
                 row["altos"] = alt
                 row["comb_6"] = comb_6
                 row["fator_simples"] = fator
+
+                # Faixa de soma e padrão extremo
+                if soma_jogo <= 120:
+                    faixa_soma = "muito baixa"
+                elif soma_jogo <= 180:
+                    faixa_soma = "baixa"
+                elif soma_jogo <= 240:
+                    faixa_soma = "dentro do comum"
+                else:
+                    faixa_soma = "alta/muito alta"
+
+                padrao_extremo = (
+                    pares == 0
+                    or impares == 0
+                    or bax == 0
+                    or alt == 0
+                    or faixa_soma in ("muito baixa", "alta/muito alta")
+                )
+
+                row["faixa_soma"] = faixa_soma
+                row["padrao_extremo"] = padrao_extremo
+
                 dados.append(row)
 
             jogos_df = pd.DataFrame(dados)
@@ -1251,6 +1450,7 @@ if pagina == "Gerar jogos":
                 else:
                     st.info("Nenhum dado de frequência disponível.")
 
+            # Padrões gerados
             padroes_linhas = []
             for jogo in jogos:
                 p, imp = pares_impares(jogo)
@@ -1279,6 +1479,32 @@ if pagina == "Gerar jogos":
             with col_p2:
                 st.markdown("**Padrões baixos/altos nos jogos gerados**")
                 st.dataframe(dist_ba, hide_index=True, use_container_width=True)
+
+            st.markdown("---")
+            st.markdown("#### Comparador de estratégias (pacote atual)")
+
+            if jogos_info:
+                comp_rows = []
+                for est in sorted({info["estrategia"] for info in jogos_info}):
+                    jogos_est = [info["jogo"] for info in jogos_info if info["estrategia"] == est]
+                    if not jogos_est:
+                        continue
+                    custo_est = calcular_custo_total(jogos_est, preco_base_6)
+                    prob_est = prob_sena_pacote(jogos_est)
+                    media_dezenas = np.mean([len(j) for j in jogos_est])
+                    comp_rows.append(
+                        {
+                            "estrategia": est,
+                            "qtd_jogos": len(jogos_est),
+                            "media_dezenas_por_jogo": media_dezenas,
+                            "custo_total_est": custo_est,
+                            "prob_sena_aprox": prob_est,
+                        }
+                    )
+                df_comp = pd.DataFrame(comp_rows)
+                st.dataframe(df_comp, hide_index=True, use_container_width=True)
+            else:
+                st.info("Nenhuma estratégia para comparar no pacote atual.")
 
             st.markdown("---")
             st.markdown("#### Simulação de acertos")
@@ -1351,14 +1577,22 @@ if pagina == "Gerar jogos":
                 ).head(qtd_hist)
 
                 with st.spinner("Rodando simulação em vários concursos, aguarde..."):
-                    df_multi = simular_multi_concursos(
+                    df_multi, df_multi_conc = simular_multi_concursos(
                         jogos,
                         concursos_multi,
                         show_progress=True,
                     )
 
+                st.markdown("**Distribuição global de acertos (todos os concursos simulados)**")
                 st.dataframe(
                     df_multi.sort_values("acertos"),
+                    hide_index=True,
+                    use_container_width=True,
+                )
+
+                st.markdown("**Resumo por concurso (máx acertos e prêmios)**")
+                st.dataframe(
+                    df_multi_conc.sort_values("concurso"),
                     hide_index=True,
                     use_container_width=True,
                 )
