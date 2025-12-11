@@ -576,102 +576,258 @@ with st.sidebar:
         help="Escolha se deseja criar novos jogos ou analisar o histórico.",
     )
 
-    gerar = False  # default
+    gerar = False
+    gerar_misto = False
+    modo_geracao = "Uma estratégia"
 
     if pagina == "Gerar jogos":
-        st.markdown("### Estratégia de geração")
+        st.markdown("### Modo de geração")
 
-        estrategia = st.selectbox(
-            "Estratégia",
-            [
-                "Aleatório puro",
-                "Balanceado par/ímpar",
-                "Setorial (faixas)",
-                "Quentes/Frias/Mix",
-                "Sem sequências longas",
-                "Wheeling simples (base fixa)",
-            ],
-            help="Tipo de lógica usada para montar os jogos. "
-                 "Use a explicação na tela principal para entender cada uma.",
+        modo_geracao = st.radio(
+            "Como deseja gerar os jogos?",
+            ["Uma estratégia", "Misto de estratégias"],
+            help=(
+                "• Uma estratégia: todos os jogos seguem a mesma lógica.\n"
+                "• Misto de estratégias: gera jogos combinando várias estratégias de uma vez."
+            ),
         )
 
-        st.markdown("### Parâmetros básicos")
+        if modo_geracao == "Uma estratégia":
+            # ---------- MODO SIMPLES (COMO JÁ ERA) ----------
+            st.markdown("### Estratégia de geração")
 
-        qtd_jogos = st.slider(
-            "Quantidade de jogos",
-            1,
-            30,
-            10,
-            help="Número de jogos diferentes que serão gerados.",
-        )
-        tam_jogo = st.slider(
-            "Dezenas por jogo",
-            6,
-            15,
-            6,
-            help="Quantidade de dezenas em cada jogo (aposta).",
-        )
+            estrategia = st.selectbox(
+                "Estratégia",
+                [
+                    "Aleatório puro",
+                    "Balanceado par/ímpar",
+                    "Setorial (faixas)",
+                    "Quentes/Frias/Mix",
+                    "Sem sequências longas",
+                    "Wheeling simples (base fixa)",
+                ],
+                help="Tipo de lógica usada para montar os jogos. "
+                     "Use a explicação na tela principal para entender cada uma.",
+            )
 
-        if estrategia == "Quentes/Frias/Mix":
-            st.markdown("#### Mix de dezenas")
-            col_q1, col_q2, col_q3 = st.columns(3)
-            with col_q1:
-                q_quentes = st.number_input(
-                    "Quentes",
-                    0,
-                    10,
-                    3,
-                    help="Dezenas mais sorteadas no histórico.",
-                )
-            with col_q2:
-                q_frias = st.number_input(
-                    "Frias",
-                    0,
-                    10,
-                    2,
-                    help="Dezenas menos sorteadas / mais atrasadas.",
-                )
-            with col_q3:
-                q_neutras = st.number_input(
-                    "Neutras",
-                    0,
-                    10,
-                    1,
-                    help="Dezenas que não estão entre as mais nem entre as menos frequentes.",
-                )
+            st.markdown("### Parâmetros básicos")
 
-            with st.popover("O que são quentes, frias e neutras?"):
-                st.write("• **Quentes**: saíram mais vezes no histórico.")
-                st.write("• **Frias**: saíram poucas vezes ou estão há muitos concursos sem aparecer.")
-                st.write("• **Neutras**: não se destacam nem como muito, nem como pouco sorteadas.")
-                st.caption("Isso é apenas referência histórica, não aumenta a chance real de acerto.")
-
-        if estrategia == "Sem sequências longas":
-            st.markdown("#### Controle de sequência")
-            limite_seq = st.slider(
-                "Máx. sequência permitida",
-                2,
+            qtd_jogos = st.slider(
+                "Quantidade de jogos",
+                1,
+                30,
+                10,
+                help="Número de jogos diferentes que serão gerados.",
+            )
+            tam_jogo = st.slider(
+                "Dezenas por jogo",
                 6,
-                3,
-                help="Maior quantidade de dezenas consecutivas que pode aparecer no mesmo jogo.",
+                15,
+                6,
+                help="Quantidade de dezenas em cada jogo (aposta).",
             )
 
-        if estrategia == "Wheeling simples (base fixa)":
-            st.markdown("#### Base fixa")
-            st.text_input(
-                "Base (separada por vírgulas)",
-                key="base_wheeling_value",
-                placeholder="Ex: 1, 5, 12, 23, 34, 45, 56",
-                help="Informe uma lista de dezenas. O sistema monta combinações de 6 números dentro dessa base.",
+            if estrategia == "Quentes/Frias/Mix":
+                st.markdown("#### Mix de dezenas")
+                col_q1, col_q2, col_q3 = st.columns(3)
+                with col_q1:
+                    q_quentes = st.number_input(
+                        "Quentes",
+                        0,
+                        10,
+                        3,
+                        help="Dezenas mais sorteadas no histórico.",
+                    )
+                with col_q2:
+                    q_frias = st.number_input(
+                        "Frias",
+                        0,
+                        10,
+                        2,
+                        help="Dezenas menos sorteadas / mais atrasadas.",
+                    )
+                with col_q3:
+                    q_neutras = st.number_input(
+                        "Neutras",
+                        0,
+                        10,
+                        1,
+                        help="Dezenas que não estão entre as mais nem entre as menos frequentes.",
+                    )
+
+                with st.popover("O que são quentes, frias e neutras?"):
+                    st.write("• **Quentes**: saíram mais vezes no histórico.")
+                    st.write("• **Frias**: saíram poucas vezes ou estão há muitos concursos sem aparecer.")
+                    st.write("• **Neutras**: não se destacam nem como muito, nem como pouco sorteadas.")
+                    st.caption("Isso é apenas referência histórica, não aumenta a chance real de acerto.")
+
+            if estrategia == "Sem sequências longas":
+                st.markdown("#### Controle de sequência")
+                limite_seq = st.slider(
+                    "Máx. sequência permitida",
+                    2,
+                    6,
+                    3,
+                    help="Maior quantidade de dezenas consecutivas que pode aparecer no mesmo jogo.",
+                )
+
+            if estrategia == "Wheeling simples (base fixa)":
+                st.markdown("#### Base fixa")
+                st.text_input(
+                    "Base (separada por vírgulas)",
+                    key="base_wheeling_value",
+                    placeholder="Ex: 1, 5, 12, 23, 34, 45, 56",
+                    help="Informe uma lista de dezenas. O sistema monta combinações de 6 números dentro dessa base.",
+                )
+
+            st.markdown("---")
+            gerar = st.button(
+                "Gerar jogos",
+                type="primary",
+                use_container_width=True,
+                help="Clique após ajustar os parâmetros para criar novos jogos.",
             )
 
-        st.markdown("---")
-        gerar = st.button(
-            "Gerar jogos",
-            type="primary",
-            use_container_width=True,
-            help="Clique após ajustar os parâmetros para criar novos jogos.",
-        )
+        else:
+            # ---------- MODO MISTO ----------
+            st.markdown("### Parâmetros básicos do misto")
+
+            tam_jogo_mix = st.slider(
+                "Dezenas por jogo",
+                6,
+                15,
+                6,
+                key="tam_jogo_mix",
+                help="Quantidade de dezenas em cada jogo gerado pelas estratégias (exceto wheeling, que sempre gera 6).",
+            )
+
+            st.markdown("### Quantos jogos por estratégia?")
+            st.caption(
+                "Defina quantos jogos deseja gerar com cada estratégia. "
+                "Use 0 para ignorar alguma delas."
+            )
+
+            jogos_misto = {}
+
+            # Aleatório puro
+            jogos_misto["Aleatório puro"] = st.number_input(
+                "Aleatório puro",
+                min_value=0,
+                max_value=30,
+                value=1,
+                step=1,
+                help="Quantidade de jogos totalmente aleatórios.",
+                key="mix_qtd_aleatorio",
+            )
+
+            # Balanceado
+            jogos_misto["Balanceado par/ímpar"] = st.number_input(
+                "Balanceado par/ímpar",
+                min_value=0,
+                max_value=30,
+                value=1,
+                step=1,
+                help="Quantidade de jogos com distribuição equilibrada de pares e ímpares.",
+                key="mix_qtd_balanceado",
+            )
+
+            # Setorial
+            jogos_misto["Setorial (faixas)"] = st.number_input(
+                "Setorial (faixas)",
+                min_value=0,
+                max_value=30,
+                value=1,
+                step=1,
+                help="Quantidade de jogos distribuindo dezenas entre 1–20, 21–40 e 41–60.",
+                key="mix_qtd_setorial",
+            )
+
+            # Quentes/Frias/Mix
+            with st.expander("Quantes/Frias/Mix (opcional)", expanded=False):
+                jogos_misto["Quentes/Frias/Mix"] = st.number_input(
+                    "Jogos Quentes/Frias/Mix",
+                    min_value=0,
+                    max_value=30,
+                    value=1,
+                    step=1,
+                    help="Quantidade de jogos misturando dezenas mais sorteadas, atrasadas e neutras.",
+                    key="mix_qtd_qfm",
+                )
+                col_q1m, col_q2m, col_q3m = st.columns(3)
+                with col_q1m:
+                    mix_q_quentes = st.number_input(
+                        "Quentes",
+                        0,
+                        10,
+                        3,
+                        help="Dezenas mais sorteadas no histórico.",
+                        key="mix_q_quentes",
+                    )
+                with col_q2m:
+                    mix_q_frias = st.number_input(
+                        "Frias",
+                        0,
+                        10,
+                        2,
+                        help="Dezenas menos sorteadas / mais atrasadas.",
+                        key="mix_q_frias",
+                    )
+                with col_q3m:
+                    mix_q_neutras = st.number_input(
+                        "Neutras",
+                        0,
+                        10,
+                        1,
+                        help="Dezenas que não estão entre as mais nem entre as menos frequentes.",
+                        key="mix_q_neutras",
+                    )
+
+            # Sem sequências
+            with st.expander("Sem sequências longas (opcional)", expanded=False):
+                jogos_misto["Sem sequências longas"] = st.number_input(
+                    "Jogos Sem sequências longas",
+                    min_value=0,
+                    max_value=30,
+                    value=1,
+                    step=1,
+                    help="Quantidade de jogos evitando muitas dezenas consecutivas.",
+                    key="mix_qtd_sem_seq",
+                )
+                mix_limite_seq = st.slider(
+                    "Máx. sequência permitida (misto)",
+                    2,
+                    6,
+                    3,
+                    key="mix_limite_seq",
+                    help="Maior quantidade de dezenas consecutivas permitida nos jogos deste grupo.",
+                )
+
+            # Wheeling
+            with st.expander("Wheeling simples (opcional)", expanded=False):
+                jogos_misto["Wheeling simples (base fixa)"] = st.number_input(
+                    "Jogos Wheeling simples",
+                    min_value=0,
+                    max_value=30,
+                    value=0,
+                    step=1,
+                    help="Quantidade de jogos formados a partir de uma base fixa de dezenas.",
+                    key="mix_qtd_wheeling",
+                )
+                st.text_input(
+                    "Base fixa (separada por vírgulas)",
+                    key="mix_base_wheeling_value",
+                    placeholder="Ex: 1, 5, 12, 23, 34, 45, 56",
+                    help="Informe a base para montar combinações de 6 dezenas.",
+                )
+
+            st.markdown("---")
+            gerar_misto = st.button(
+                "Gerar jogos mistos",
+                type="primary",
+                use_container_width=True,
+                help="Gera jogos combinando todas as estratégias configuradas acima.",
+            )
+
 
 
 # ==========================
@@ -764,8 +920,10 @@ if pagina == "Gerar jogos":
     tab_jogos, tab_tabela = st.tabs(["Jogos gerados", "Tabela / Exportar"])
 
     jogos: list[list[int]] = []
+    jogos_info: list[dict] = []  # para guardar estratégia junto
 
-    if gerar and "estrategia" in locals():
+    # ---------- GERAÇÃO MODO SIMPLES ----------
+    if modo_geracao == "Uma estratégia" and gerar and "estrategia" in locals():
         if estrategia == "Aleatório puro":
             jogos = gerar_aleatorio_puro(qtd_jogos, tam_jogo)
         elif estrategia == "Balanceado par/ímpar":
@@ -785,7 +943,7 @@ if pagina == "Gerar jogos":
                 tam_jogo=tam_jogo,
                 limite_sequencia=limite_seq,
             )
-        elif estrategia == "Wheeling simples (base fixa)":
+        elif estrategia == "Wheling simples (base fixa)":
             try:
                 base_texto = st.session_state.get("base_wheeling_value", "")
                 base_dezenas = [
@@ -800,8 +958,94 @@ if pagina == "Gerar jogos":
             except Exception:
                 jogos = []
 
+        jogos_info = [
+            {"estrategia": estrategia, "jogo": j} for j in jogos
+        ]
+
+    # ---------- GERAÇÃO MODO MISTO ----------
+    if modo_geracao == "Misto de estratégias" and gerar_misto:
+        jogos = []
+        jogos_info = []
+
+        # Aleatório puro
+        qtd_ap = jogos_misto.get("Aleatório puro", 0)
+        if qtd_ap > 0:
+            js = gerar_aleatorio_puro(qtd_ap, tam_jogo_mix)
+            jogos.extend(js)
+            jogos_info.extend(
+                {"estrategia": "Aleatório puro", "jogo": j} for j in js
+            )
+
+        # Balanceado
+        qtd_bal = jogos_misto.get("Balanceado par/ímpar", 0)
+        if qtd_bal > 0:
+            js = gerar_balanceado_par_impar(qtd_bal, tam_jogo_mix)
+            jogos.extend(js)
+            jogos_info.extend(
+                {"estrategia": "Balanceado par/ímpar", "jogo": j} for j in js
+            )
+
+        # Setorial
+        qtd_set = jogos_misto.get("Setorial (faixas)", 0)
+        if qtd_set > 0:
+            js = gerar_setorial(qtd_set, tam_jogo_mix)
+            jogos.extend(js)
+            jogos_info.extend(
+                {"estrategia": "Setorial (faixas)", "jogo": j} for j in js
+            )
+
+        # Quentes/Frias/Mix
+        qtd_qfm = jogos_misto.get("Quentes/Frias/Mix", 0)
+        if qtd_qfm > 0:
+            js = gerar_quentes_frias_mix(
+                qtd_jogos=qtd_qfm,
+                tam_jogo=tam_jogo_mix,
+                freq_df=freq_df,
+                proporcao=(mix_q_quentes, mix_q_frias, mix_q_neutras),
+            )
+            jogos.extend(js)
+            jogos_info.extend(
+                {"estrategia": "Quentes/Frias/Mix", "jogo": j} for j in js
+            )
+
+        # Sem sequências
+        qtd_ss = jogos_misto.get("Sem sequências longas", 0)
+        if qtd_ss > 0:
+            js = gerar_sem_sequencias(
+                qtd_jogos=qtd_ss,
+                tam_jogo=tam_jogo_mix,
+                limite_sequencia=mix_limite_seq,
+            )
+            jogos.extend(js)
+            jogos_info.extend(
+                {"estrategia": "Sem sequências longas", "jogo": j} for j in js
+            )
+
+        # Wheeling
+        qtd_wh = jogos_misto.get("Wheeling simples (base fixa)", 0)
+        if qtd_wh > 0:
+            try:
+                base_texto = st.session_state.get("mix_base_wheeling_value", "")
+                base_dezenas = [
+                    int(x.strip())
+                    for x in str(base_texto).split(",")
+                    if x.strip().isdigit()
+                ]
+                js = gerar_wheeling_simples(
+                    base_dezenas=base_dezenas,
+                    max_jogos=qtd_wh,
+                )
+                jogos.extend(js)
+                jogos_info.extend(
+                    {"estrategia": "Wheeling simples (base fixa)", "jogo": j}
+                    for j in js
+                )
+            except Exception:
+                pass
+
+
     # Conteúdo das tabs
-    if not jogos and gerar:
+    if not jogos and (gerar or gerar_misto):
         tab_jogos.warning(
             "Nenhum jogo foi gerado. Revise os parâmetros na barra lateral e tente novamente."
         )
@@ -814,19 +1058,30 @@ if pagina == "Gerar jogos":
     else:
         with tab_jogos:
             st.markdown("#### Lista de jogos")
-            st.caption("Use esta lista para visualizar rapidamente e copiar jogos individuais.")
+            st.caption(
+                "Use esta lista para visualizar rapidamente e ver de qual estratégia cada jogo veio."
+            )
             col_left, col_center, col_right = st.columns([1, 2, 1])
             with col_center:
-                for i, jogo in enumerate(jogos, start=1):
-                    st.code(f"Jogo {i:02d}: {formatar_jogo(jogo)}")
+                for i, info in enumerate(jogos_info, start=1):
+                    nome_est = info["estrategia"]
+                    jogo = info["jogo"]
+                    st.code(f"{i:02d} - {nome_est}: {formatar_jogo(jogo)}")
 
         with tab_tabela:
             st.markdown("#### Tabela completa e exportação")
-            st.caption("Use a tabela para copiar em bloco ou exportar para CSV.")
-            jogos_df = pd.DataFrame(
-                jogos,
-                columns=[f"d{i}" for i in range(1, len(jogos[0]) + 1)],
-            )
+            st.caption("Inclui uma coluna com a estratégia usada em cada jogo.")
+
+            # montar DF com coluna de estratégia
+            max_len = max(len(j["jogo"]) for j in jogos_info)
+            dados = []
+            for info in jogos_info:
+                row = {"estrategia": info["estrategia"]}
+                for idx, d in enumerate(info["jogo"], start=1):
+                    row[f"d{idx}"] = d
+                dados.append(row)
+
+            jogos_df = pd.DataFrame(dados)
             st.dataframe(jogos_df, hide_index=True, use_container_width=True)
 
             csv_data = jogos_df.to_csv(index=False).encode("utf-8")
@@ -837,6 +1092,7 @@ if pagina == "Gerar jogos":
                 mime="text/csv",
                 use_container_width=True,
             )
+
 
 else:
     pagina_analises(df_concursos, freq_df)
