@@ -6,15 +6,6 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 
-# Altair opcional (heatmap)
-try:
-    import altair as alt
-
-    HAS_ALTAIR = True
-except Exception:
-    alt = None
-    HAS_ALTAIR = False
-
 # ==========================
 # CONFIG GERAL
 # ==========================
@@ -27,7 +18,7 @@ st.set_page_config(
 
 CSV_PATH = "historico_mega_sena.csv"
 
-PRECO_SIMPLES_6_DEFAULT = 6.00
+PRECO_SIMPLES_6_DEFAULT = 7.50
 TOTAL_COMBS_MEGA = math.comb(60, 6)
 
 
@@ -1202,33 +1193,27 @@ if pagina == "Gerar jogos":
             col_a1, col_a2 = st.columns(2)
             with col_a1:
                 st.markdown("**Frequência das dezenas**")
-                st.bar_chart(
-                    df_freq_jogos.set_index("dezena")["frequencia"],
-                    use_container_width=True,
-                )
+                if not df_freq_jogos.empty:
+                    st.bar_chart(
+                        df_freq_jogos.set_index("dezena")["frequencia"],
+                        use_container_width=True,
+                    )
+                else:
+                    st.info("Nenhuma dezena para exibir.")
 
             with col_a2:
-                st.markdown("**Heatmap de cobertura (1–60)**")
-                if HAS_ALTAIR and not df_freq_jogos.empty:
-                    df_heat = df_freq_jogos.copy()
-                    df_heat["linha"] = ((df_heat["dezena"] - 1) // 10) + 1
-                    df_heat["coluna"] = ((df_heat["dezena"] - 1) % 10) + 1
-
-                    chart = (
-                        alt.Chart(df_heat)
-                        .mark_rect()
-                        .encode(
-                            x=alt.X("coluna:O", title="Coluna (1–10)"),
-                            y=alt.Y("linha:O", title="Linha (1–6)"),
-                            color=alt.Color("frequencia:Q", title="Freq."),
-                            tooltip=["dezena", "frequencia"],
-                        )
+                st.markdown("**Top dezenas mais usadas**")
+                if not df_freq_jogos.empty:
+                    top_n = min(10, len(df_freq_jogos))
+                    st.dataframe(
+                        df_freq_jogos.sort_values(
+                            "frequencia", ascending=False
+                        ).head(top_n),
+                        hide_index=True,
+                        use_container_width=True,
                     )
-                    st.altair_chart(chart, use_container_width=True)
                 else:
-                    st.info(
-                        "Heatmap indisponível (Altair não está disponível ou não há dados suficientes)."
-                    )
+                    st.info("Nenhum dado de frequência disponível.")
 
             padroes_linhas = []
             for jogo in jogos:
