@@ -99,34 +99,23 @@ def _atualizar_csv_generico(
     caminho_csv: str,
     n_dezenas: int,
 ) -> None:
-    """
-    Função genérica para atualizar CSV de uma modalidade da Caixa
-    usando XLSX oficial e layout: concurso;data;d1...dN (sep=';').
-    """
-    cols_csv = ["concurso", "data"] + [f"d{i}" for i in range(1, n_dezenas + 1)]
-
-    # 1) Lê CSV existente (se houver) para saber último concurso
-    ultimo_concurso_local = 0
-    df_local = None
-    if os.path.exists(caminho_csv):
-        try:
-            df_local = pd.read_csv(caminho_csv, sep=";")
-            if not df_local.empty and "concurso" in df_local.columns:
-                ultimo_concurso_local = int(df_local["concurso"].max())
-        except Exception:
-            df_local = None
-            ultimo_concurso_local = 0
-
-    # 2) Baixa XLSX completo
-    resp = requests.get(url_xlsx, timeout=30)
-    resp.raise_for_status()
-
-    xls_bytes = io.BytesIO(resp.content)
+    ...
     df_xls = pd.read_excel(xls_bytes)
 
-    # 3) Mapeia colunas do XLSX (padrão Caixa: "Concurso", "Data Sorteio", "Bola1"...)
+    # 3) Mapeia colunas do XLSX (padrão Caixa)
     col_concurso = "Concurso"
-    col_data = "Data Sorteio"
+
+    # trata variação entre "Data Sorteio" e "Data do Sorteio"
+    if "Data Sorteio" in df_xls.columns:
+        col_data = "Data Sorteio"
+    elif "Data do Sorteio" in df_xls.columns:
+        col_data = "Data do Sorteio"
+    else:
+        raise ValueError(
+            "Coluna de data não encontrada no XLSX (esperado 'Data Sorteio' "
+            "ou 'Data do Sorteio'). Verifique o layout do arquivo da Caixa."
+        )
+
     col_bolas = [f"Bola{i}" for i in range(1, n_dezenas + 1)]
 
     for c in [col_concurso, col_data] + col_bolas:
