@@ -73,8 +73,9 @@ def inject_global_css() -> None:
 
 inject_global_css()
 
-PRECO_BASE_MEGA_DEFAULT = 7.50   # Mega-Sena 6 dezenas
-PRECO_BASE_LOTO_DEFAULT = 2.50   # Lotofácil 15 dezenas
+# preços oficiais atuais da aposta mínima física (2025) [web:455][web:453][web:457][web:460]
+PRECO_BASE_MEGA = 6.00    # Mega-Sena, 6 números
+PRECO_BASE_LOTO = 3.50    # Lotofácil, 15 números
 
 # ==========================
 # FUNÇÕES BÁSICAS
@@ -284,10 +285,6 @@ def gerar_sem_sequencias(
 # CUSTO E PROBABILIDADE
 # ==========================
 def preco_aposta_loteria(n_dezenas: int, n_min_base: int, preco_base: float) -> float:
-    """
-    Valor aproximado de UMA aposta com n_dezenas: C(n_dezenas, n_min_base) * preço_base.
-    Para Mega-Sena, n_min_base=6; para Lotofácil, 15. [web:419][web:424]
-    """
     if n_dezenas < n_min_base:
         raise ValueError("Número de dezenas menor que o mínimo permitido.")
     comb = math.comb(n_dezenas, n_min_base)
@@ -630,7 +627,7 @@ with st.sidebar:
         N_MAX = 15
         N_DEZENAS_HIST = 6
         CSV_PATH = "historico_mega_sena.csv"
-        PRECO_BASE_DEFAULT = PRECO_BASE_MEGA_DEFAULT
+        preco_base = PRECO_BASE_MEGA
         COMB_TARGET = math.comb(60, 6)
         LIMITE_BAIXO = 30
     else:
@@ -639,7 +636,7 @@ with st.sidebar:
         N_MAX = 20
         N_DEZENAS_HIST = 15
         CSV_PATH = "historico_lotofacil.csv"
-        PRECO_BASE_DEFAULT = PRECO_BASE_LOTO_DEFAULT
+        preco_base = PRECO_BASE_LOTO
         COMB_TARGET = math.comb(25, 15)
         LIMITE_BAIXO = 13
 
@@ -648,14 +645,6 @@ with st.sidebar:
     gerar = False
     gerar_misto = False
     modo_geracao = "Uma estratégia"
-
-    preco_base = st.number_input(
-        "Valor aposta base",
-        min_value=0.5,
-        max_value=100.0,
-        value=PRECO_BASE_DEFAULT,
-        step=0.5,
-    )
 
     orcamento_max = st.number_input(
         "Orçamento máximo (opcional)",
@@ -912,6 +901,7 @@ if pagina == "Gerar jogos":
         st.markdown("### Parâmetros gerais")
         st.write(f"- Loteria: **{modalidade}**")
         st.write(f"- Universo: 1–{N_UNIVERSO}")
+        st.write(f"- Valor aposta base: R$ {preco_base:,.2f}".replace(".", ","))  # preço fixo
         if dezenas_fixas:
             st.write(f"- Dezenas fixas: {sorted(dezenas_fixas)}")
         if dezenas_proibidas:
