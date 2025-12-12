@@ -99,13 +99,36 @@ def _atualizar_csv_generico(
     caminho_csv: str,
     n_dezenas: int,
 ) -> None:
-    ...
+    """
+    Atualiza CSV de uma modalidade da Caixa usando o XLSX oficial,
+    gerando layout: concurso;data;d1...dN (sep=';').
+    """
+    cols_csv = ["concurso", "data"] + [f"d{i}" for i in range(1, n_dezenas + 1)]
+
+    # 1) CSV existente (se houver)
+    ultimo_concurso_local = 0
+    df_local = None
+    if os.path.exists(caminho_csv):
+        try:
+            df_local = pd.read_csv(caminho_csv, sep=";")
+            if not df_local.empty and "concurso" in df_local.columns:
+                ultimo_concurso_local = int(df_local["concurso"].max())
+        except Exception:
+            df_local = None
+            ultimo_concurso_local = 0
+
+    # 2) Baixa XLSX completo
+    resp = requests.get(url_xlsx, timeout=30)
+    resp.raise_for_status()
+    xls_bytes = io.BytesIO(resp.content)
+
+    # 3) Lê XLSX
     df_xls = pd.read_excel(xls_bytes)
 
-    # 3) Mapeia colunas do XLSX (padrão Caixa)
+    # 4) Mapeia colunas do XLSX
     col_concurso = "Concurso"
 
-    # trata variação entre "Data Sorteio" e "Data do Sorteio"
+    # Lotofácil costuma vir com "Data Sorteio", Mega com "Data do Sorteio"
     if "Data Sorteio" in df_xls.columns:
         col_data = "Data Sorteio"
     elif "Data do Sorteio" in df_xls.columns:
@@ -139,14 +162,14 @@ def _atualizar_csv_generico(
     for i in range(1, n_dezenas + 1):
         df_norm[f"d{i}"] = df_norm[f"d{i}"].astype(int)
 
-    # 4) Filtra apenas concursos novos
+    # 5) Apenas concursos novos
     if ultimo_concurso_local > 0:
         df_norm = df_norm[df_norm["concurso"] > ultimo_concurso_local]
 
     if df_norm.empty:
         return
 
-    # 5) Concatena e salva
+    # 6) Concatena e salva
     if df_local is not None and not df_local.empty:
         df_local = df_local[cols_csv]
         df_final = pd.concat([df_local, df_norm[cols_csv]], ignore_index=True)
@@ -892,7 +915,6 @@ with st.sidebar:
 # ==========================
 # CARGA DOS DADOS
 # ==========================
-# Atualiza histórico automaticamente antes de carregar
 try:
     if modalidade == "Lotofácil":
         atualizar_csv_lotofacil(CSV_PATH, n_dezenas=N_DEZENAS_HIST)
