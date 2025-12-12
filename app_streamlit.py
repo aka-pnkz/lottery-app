@@ -76,12 +76,12 @@ def inject_global_css() -> None:
 
 inject_global_css()
 
-# preços oficiais atuais da aposta mínima (2025): Mega 6 números, Lotofácil 15 números [web:2]
+# preços oficiais atuais da aposta mínima (2025): Mega 6 números, Lotofácil 15 números [web:23]
 PRECO_BASE_MEGA = 6.00
 PRECO_BASE_LOTO = 3.50
 
 # ==========================
-# ATUALIZAÇÃO LOTOFÁCIL VIA XLSX CAIXA
+# ATUALIZAÇÃO VIA XLSX CAIXA
 # ==========================
 
 URL_XLSX_LOTOFACIL = (
@@ -89,14 +89,23 @@ URL_XLSX_LOTOFACIL = (
     "?modalidade=Lotof%C3%A1cil"
 )
 
-def atualizar_csv_lotofacil(caminho_csv: str, n_dezenas: int = 15) -> None:
+URL_XLSX_MEGA = (
+    "https://servicebus2.caixa.gov.br/portaldeloterias/api/resultados/download"
+    "?modalidade=Mega-Sena"
+)
+
+def _atualizar_csv_generico(
+    url_xlsx: str,
+    caminho_csv: str,
+    n_dezenas: int,
+) -> None:
     """
-    Atualiza o CSV local da Lotofácil baixando o XLSX oficial da Caixa,
-    convertendo para o layout: concurso;data;d1;...;d15 (sep=';').
+    Função genérica para atualizar CSV de uma modalidade da Caixa
+    usando XLSX oficial e layout: concurso;data;d1...dN (sep=';').
     """
     cols_csv = ["concurso", "data"] + [f"d{i}" for i in range(1, n_dezenas + 1)]
 
-    # 1) Lê CSV existente, se houver, para descobrir último concurso salvo
+    # 1) Lê CSV existente (se houver) para saber último concurso
     ultimo_concurso_local = 0
     df_local = None
     if os.path.exists(caminho_csv):
@@ -108,15 +117,14 @@ def atualizar_csv_lotofacil(caminho_csv: str, n_dezenas: int = 15) -> None:
             df_local = None
             ultimo_concurso_local = 0
 
-    # 2) Baixa XLSX completo da Caixa
-    resp = requests.get(URL_XLSX_LOTOFACIL, timeout=30)
+    # 2) Baixa XLSX completo
+    resp = requests.get(url_xlsx, timeout=30)
     resp.raise_for_status()
 
     xls_bytes = io.BytesIO(resp.content)
     df_xls = pd.read_excel(xls_bytes)
 
-    # 3) Mapeia colunas do XLSX para o padrão interno
-    # Ajuste estes nomes se o layout da Caixa for diferente.
+    # 3) Mapeia colunas do XLSX (padrão Caixa: "Concurso", "Data Sorteio", "Bola1"...)
     col_concurso = "Concurso"
     col_data = "Data Sorteio"
     col_bolas = [f"Bola{i}" for i in range(1, n_dezenas + 1)]
@@ -124,7 +132,7 @@ def atualizar_csv_lotofacil(caminho_csv: str, n_dezenas: int = 15) -> None:
     for c in [col_concurso, col_data] + col_bolas:
         if c not in df_xls.columns:
             raise ValueError(
-                f"Coluna '{c}' não encontrada no XLSX da Lotofácil. "
+                f"Coluna '{c}' não encontrada no XLSX. "
                 f"Verifique o layout do arquivo da Caixa."
             )
 
@@ -158,6 +166,12 @@ def atualizar_csv_lotofacil(caminho_csv: str, n_dezenas: int = 15) -> None:
 
     df_final = df_final.sort_values("concurso").reset_index(drop=True)
     df_final.to_csv(caminho_csv, sep=";", index=False)
+
+def atualizar_csv_lotofacil(caminho_csv: str, n_dezenas: int = 15) -> None:
+    _atualizar_csv_generico(URL_XLSX_LOTOFACIL, caminho_csv, n_dezenas)
+
+def atualizar_csv_mega(caminho_csv: str, n_dezenas: int = 6) -> None:
+    _atualizar_csv_generico(URL_XLSX_MEGA, caminho_csv, n_dezenas)
 
 # ==========================
 # FUNÇÕES BÁSICAS
@@ -889,12 +903,14 @@ with st.sidebar:
 # ==========================
 # CARGA DOS DADOS
 # ==========================
-# Atualiza histórico da Lotofácil automaticamente antes de carregar
-if modalidade == "Lotofácil":
-    try:
+# Atualiza histórico automaticamente antes de carregar
+try:
+    if modalidade == "Lotofácil":
         atualizar_csv_lotofacil(CSV_PATH, n_dezenas=N_DEZENAS_HIST)
-    except Exception as e:
-        st.warning(f"Falha ao atualizar histórico da Lotofácil via XLSX: {e}")
+    elif modalidade == "Mega-Sena":
+        atualizar_csv_mega(CSV_PATH, n_dezenas=N_DEZENAS_HIST)
+except Exception as e:
+    st.warning(f"Falha ao atualizar histórico da {modalidade} via XLSX: {e}")
 
 try:
     df_concursos = carregar_concursos(CSV_PATH, N_DEZENAS_HIST)
