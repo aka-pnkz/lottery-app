@@ -16,7 +16,6 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# CSS global leve para embelezar (sem arquivo externo). [web:361][web:365]
 def inject_global_css() -> None:
     st.markdown(
         """
@@ -74,9 +73,8 @@ def inject_global_css() -> None:
 
 inject_global_css()
 
-# parâmetros padrão de preço base (podem ser ajustados pelo usuário) [web:423][web:420]
-PRECO_BASE_MEGA_DEFAULT = 7.50      # aposta simples 6 dezenas (Mega)
-PRECO_BASE_LOTO_DEFAULT = 2.50      # aposta simples 15 dezenas (Lotofácil)
+PRECO_BASE_MEGA_DEFAULT = 7.50   # Mega-Sena 6 dezenas
+PRECO_BASE_LOTO_DEFAULT = 2.50   # Lotofácil 15 dezenas
 
 # ==========================
 # FUNÇÕES BÁSICAS
@@ -129,7 +127,6 @@ def tem_sequencia_longa(jogo: list[int], limite: int = 3) -> bool:
     return False
 
 
-# primos até 60 (serve bem para Mega e Loto) [web:392]
 PRIMOS_ATE_60 = {
     2, 3, 5, 7, 11, 13, 17, 19,
     23, 29, 31, 37, 41, 43, 47, 53, 59
@@ -224,7 +221,6 @@ def gerar_quentes_frias_mix(
     total_quentes, total_frias, total_neutras = proporcao
 
     freq_ord = freq_df.sort_values("frequencia", ascending=False)
-    # top 10 quentes/frias funciona tanto para Mega (60) quanto Loto (25). [web:419][web:421]
     quentes = freq_ord["dezena"].values[:10]
     frias = freq_ord.sort_values("frequencia", ascending=True)["dezena"].values[:10]
     neutras = np.setdiff1d(np.arange(1, n_universo + 1), np.union1d(quentes, frias))
@@ -285,7 +281,7 @@ def gerar_sem_sequencias(
 
 
 # ==========================
-# CUSTO, COBERTURA E PROBABILIDADE
+# CUSTO E PROBABILIDADE
 # ==========================
 def preco_aposta_loteria(n_dezenas: int, n_min_base: int, preco_base: float) -> float:
     """
@@ -302,6 +298,8 @@ def calcular_custo_total(jogos: list[list[int]], n_min_base: int, preco_base: fl
     total = 0.0
     for jogo in jogos:
         n = len(jogo)
+        if n < n_min_base:
+            continue
         total += preco_aposta_loteria(n, n_min_base, preco_base)
     return total
 
@@ -311,10 +309,6 @@ def prob_premio_maximo_pacote(
     n_min_base: int,
     comb_target: int,
 ) -> float:
-    """
-    Probabilidade aproximada de acertar o prêmio máximo (sena ou 15 pontos)
-    com pelo menos 1 jogo do pacote. [web:419][web:424][web:430]
-    """
     probs = []
     for jogo in jogos:
         n = len(jogo)
@@ -332,7 +326,7 @@ def prob_premio_maximo_pacote(
 
 
 # ==========================
-# FILTROS AVANÇADOS
+# FILTROS
 # ==========================
 def filtrar_jogos(
     jogos: list[list[int]],
@@ -366,7 +360,7 @@ def filtrar_jogos(
 
 
 # ==========================
-# SIMULAÇÃO DE RESULTADOS
+# SIMULAÇÃO
 # ==========================
 def simular_premios(
     jogos: list[list[int]],
@@ -388,7 +382,7 @@ def simular_premios(
 
 
 # ==========================
-# ANÁLISE HISTÓRICA (GENÉRICA)
+# ANÁLISE HISTÓRICA
 # ==========================
 @st.cache_data
 def calcular_atraso(freq_df: pd.DataFrame, df_concursos: pd.DataFrame, n_dezenas: int) -> pd.DataFrame:
@@ -473,7 +467,6 @@ def calcular_somas(df_concursos: pd.DataFrame, n_dezenas: int) -> tuple[pd.DataF
     df = df_concursos.copy()
     df["soma"] = df[dezenas_cols].sum(axis=1)
 
-    # faixas genéricas; você pode recalibrar depois por modalidade [web:419][web:422]
     bins = [0, 150, 200, 250, 300, 350, 500]
     labels = ["0-150", "151-200", "201-250", "251-300", "301-350", "351-500"]
     df["faixa_soma"] = pd.cut(df["soma"], bins=bins, labels=labels, right=True)
@@ -490,11 +483,10 @@ def calcular_somas(df_concursos: pd.DataFrame, n_dezenas: int) -> tuple[pd.DataF
 
 
 def pagina_analises(df_concursos: pd.DataFrame, freq_df: pd.DataFrame, modalidade: str, n_dezenas_hist: int) -> None:
-    limite_baixo = 30 if modalidade == "Mega-Sena" else 13  # corte meio a meio (1–30 / 31–60, ou 1–13 / 14–25)
+    limite_baixo = 30 if modalidade == "Mega-Sena" else 13
 
     st.title(f"Análises estatísticas da {modalidade}")
     st.caption(
-        "Use esta página para entender o comportamento histórico das dezenas. "
         "As análises são descritivas e não garantem aumento de chance em sorteios futuros."
     )
 
@@ -641,14 +633,14 @@ with st.sidebar:
         PRECO_BASE_DEFAULT = PRECO_BASE_MEGA_DEFAULT
         COMB_TARGET = math.comb(60, 6)
         LIMITE_BAIXO = 30
-    else:  # Lotofácil
+    else:
         N_UNIVERSO = 25
         N_MIN = 15
         N_MAX = 20
         N_DEZENAS_HIST = 15
         CSV_PATH = "historico_lotofacil.csv"
         PRECO_BASE_DEFAULT = PRECO_BASE_LOTO_DEFAULT
-        COMB_TARGET = math.comb(25, 15)  # total de combinações 15/25 [web:419][web:424]
+        COMB_TARGET = math.comb(25, 15)
         LIMITE_BAIXO = 13
 
     pagina = st.radio("Navegação", ["Gerar jogos", "Análises estatísticas"])
@@ -663,7 +655,6 @@ with st.sidebar:
         max_value=100.0,
         value=PRECO_BASE_DEFAULT,
         step=0.5,
-        help="Valor da aposta mínima utilizada para estimar o custo total.",
     )
 
     orcamento_max = st.number_input(
@@ -749,7 +740,7 @@ with st.sidebar:
             )
 
             if estrategia == "Quentes/Frias/Mix":
-                st.markdown("#### Mix de dezenas (apenas sugestão)")
+                st.markdown("#### Mix de dezenas")
                 col_q1, col_q2, col_q3 = st.columns(3)
                 with col_q1:
                     q_quentes = st.number_input("Quentes", 0, tam_jogo, 5)
@@ -878,12 +869,10 @@ if not df_concursos.empty:
         int(_last[f"d{i}"]) for i in range(1, N_DEZENAS_HIST + 1)
     }
 
-# SESSION STATE
 if "jogos" not in st.session_state:
     st.session_state["jogos"] = []
 if "jogos_info" not in st.session_state:
     st.session_state["jogos_info"] = []
-
 
 explicacoes = {
     "Aleatório puro": "Sorteia dezenas totalmente aleatórias dentro do universo da loteria.",
@@ -980,6 +969,7 @@ if pagina == "Gerar jogos":
             soma_min=soma_min_val,
             soma_max=soma_max_val,
         )
+        jogos = [j for j in jogos if len(j) >= N_MIN]
         jogos_info = [{"estrategia": estrategia, "jogo": j} for j in jogos]
 
     # geração mista
@@ -1035,6 +1025,7 @@ if pagina == "Gerar jogos":
             soma_min=soma_min_val,
             soma_max=soma_max_val,
         )
+        jogos_filtrados = [j for j in jogos_filtrados if len(j) >= N_MIN]
         novo_info = [info for info in jogos_info if info["jogo"] in jogos_filtrados]
         jogos = [info["jogo"] for info in novo_info]
         jogos_info = novo_info
