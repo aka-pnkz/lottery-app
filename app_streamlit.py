@@ -73,9 +73,9 @@ def inject_global_css() -> None:
 
 inject_global_css()
 
-# preços oficiais atuais da aposta mínima física (2025) [web:455][web:453][web:457][web:460]
-PRECO_BASE_MEGA = 6.00    # Mega-Sena, 6 números
-PRECO_BASE_LOTO = 3.50    # Lotofácil, 15 números
+# preços oficiais atuais da aposta mínima (2025): Mega 6 números, Lotofácil 15 números [web:455][web:453][web:457][web:460]
+PRECO_BASE_MEGA = 6.00
+PRECO_BASE_LOTO = 3.50
 
 # ==========================
 # FUNÇÕES BÁSICAS
@@ -510,8 +510,7 @@ def pagina_analises(df_concursos: pd.DataFrame, freq_df: pd.DataFrame, modalidad
             st.markdown("#### Ordenado por frequência total")
             st.dataframe(
                 freq_df.sort_values("frequencia", ascending=False).reset_index(drop=True),
-                hide_index=True,
-                use_container_width=True,
+                width="stretch",
             )
         with col2:
             st.markdown("#### Ordenado por atraso atual")
@@ -519,8 +518,7 @@ def pagina_analises(df_concursos: pd.DataFrame, freq_df: pd.DataFrame, modalidad
                 atraso_df.sort_values(
                     ["atraso_atual", "frequencia"], ascending=[False, False]
                 ).reset_index(drop=True),
-                hide_index=True,
-                use_container_width=True,
+                width="stretch",
             )
 
         st.markdown("---")
@@ -544,15 +542,13 @@ def pagina_analises(df_concursos: pd.DataFrame, freq_df: pd.DataFrame, modalidad
             st.markdown("Top dezenas recentes (freq. recente)")
             st.dataframe(
                 freq_merge.sort_values("freq_recente", ascending=False).head(20),
-                hide_index=True,
-                use_container_width=True,
+                width="stretch",
             )
         with colf2:
             st.markdown("Top dezenas históricas (freq. total)")
             st.dataframe(
                 freq_merge.sort_values("frequencia", ascending=False).head(20),
-                hide_index=True,
-                use_container_width=True,
+                width="stretch",
             )
 
     with tab_padroes:
@@ -562,14 +558,13 @@ def pagina_analises(df_concursos: pd.DataFrame, freq_df: pd.DataFrame, modalidad
         )
 
         st.markdown("#### Padrões mais frequentes")
-        st.dataframe(dist_par_impar, hide_index=True, use_container_width=True)
-        st.dataframe(dist_baixa_alta, hide_index=True, use_container_width=True)
+        st.dataframe(dist_par_impar, width="stretch")
+        st.dataframe(dist_baixa_alta, width="stretch")
 
         with st.expander("Ver tabela detalhada por concurso"):
             st.dataframe(
                 df_padroes.sort_values("concurso"),
-                hide_index=True,
-                use_container_width=True,
+                width="stretch",
             )
 
     with tab_somas:
@@ -581,15 +576,13 @@ def pagina_analises(df_concursos: pd.DataFrame, freq_df: pd.DataFrame, modalidad
             st.markdown("#### Tabela por concurso")
             st.dataframe(
                 df_somas.sort_values("concurso").reset_index(drop=True),
-                hide_index=True,
-                use_container_width=True,
+                width="stretch",
             )
         with col2:
             st.markdown("#### Distribuição por faixa de soma")
             st.dataframe(
                 dist_faixas,
-                hide_index=True,
-                use_container_width=True,
+                width="stretch",
             )
 
     with tab_ultimos:
@@ -604,8 +597,7 @@ def pagina_analises(df_concursos: pd.DataFrame, freq_df: pd.DataFrame, modalidad
         ultimos = df_concursos.sort_values("concurso", ascending=False).head(qtd_ultimos)
         st.dataframe(
             ultimos.sort_values("concurso", ascending=False),
-            hide_index=True,
-            use_container_width=True,
+            width="stretch",
         )
 
 
@@ -901,7 +893,7 @@ if pagina == "Gerar jogos":
         st.markdown("### Parâmetros gerais")
         st.write(f"- Loteria: **{modalidade}**")
         st.write(f"- Universo: 1–{N_UNIVERSO}")
-        st.write(f"- Valor aposta base: R$ {preco_base:,.2f}".replace(".", ","))  # preço fixo
+        st.write(f"- Valor aposta base: R$ {preco_base:,.2f}".replace(".", ","))
         if dezenas_fixas:
             st.write(f"- Dezenas fixas: {sorted(dezenas_fixas)}")
         if dezenas_proibidas:
@@ -1188,7 +1180,7 @@ if pagina == "Gerar jogos":
                 .hide(axis="index")
             )
 
-            st.dataframe(styled_jogos, use_container_width=True)
+            st.dataframe(styled_jogos, width="stretch")
 
             csv_data = jogos_df.to_csv(index=False).encode("utf-8")
             st.download_button(
@@ -1287,8 +1279,7 @@ if pagina == "Gerar jogos":
                         df_freq_jogos.sort_values(
                             "frequencia", ascending=False
                         ).head(top_n),
-                        hide_index=True,
-                        use_container_width=True,
+                        width="stretch",
                     )
                 else:
                     st.info("Nenhum dado de frequência disponível.")
@@ -1347,10 +1338,10 @@ if pagina == "Gerar jogos":
                     df_sim["acertos"].value_counts().sort_index().reset_index()
                 )
                 dist_acertos.columns = ["acertos", "qtd_jogos"]
-                st.dataframe(dist_acertos, hide_index=True, use_container_width=True)
+                st.dataframe(dist_acertos, width="stretch")
 
                 st.markdown("**Detalhamento por jogo**")
-                st.dataframe(df_sim, hide_index=True, use_container_width=True)
+                st.dataframe(df_sim, width="stretch")
 
 else:
     pagina_analises(df_concursos, freq_df, modalidade, N_DEZENAS_HIST)
