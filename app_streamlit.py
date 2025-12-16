@@ -76,11 +76,11 @@ def inject_global_css() -> None:
 
 inject_global_css()
 
-# preços oficiais atuais da aposta mínima (2025) [web:21][file:1]
+# preços oficiais atuais da aposta mínima (2025) [file:1]
 PRECO_BASE_MEGA = 6.00
 PRECO_BASE_LOTO = 3.50
 
-# endpoints oficiais de download de resultados [web:21]
+# endpoints oficiais de download de resultados [file:1]
 URL_LOTOFACIL_DOWNLOAD = (
     "https://servicebus2.caixa.gov.br/portaldeloterias/api/resultados/download"
     "?modalidade=Lotof%C3%A1cil"
@@ -99,12 +99,27 @@ URL_MEGA_DOWNLOAD = (
 def carregar_concursos(caminho_csv: str, n_dezenas: int) -> pd.DataFrame:
     cols = ["concurso", "data"] + [f"d{i}" for i in range(1, n_dezenas + 1)]
     df = pd.read_csv(caminho_csv, sep=";")
+
     df = df[cols]
-    df["concurso"] = df["concurso"].astype(int)
+
+    df["concurso"] = pd.to_numeric(df["concurso"], errors="coerce")
     df["data"] = pd.to_datetime(df["data"], dayfirst=True, errors="coerce")
-    df = df.dropna(subset=["data"])
-    for c in [f"d{i}" for i in range(1, n_dezenas + 1)]:
+    df = df.dropna(subset=["concurso", "data"])
+
+    # datas plausíveis: de 1996 até hoje
+    hoje = pd.Timestamp.today().normalize()
+    df = df[(df["data"] >= "1996-01-01") & (df["data"] <= hoje)]
+
+    df["concurso"] = df["concurso"].astype(int)
+
+    dezenas_cols = [f"d{i}" for i in range(1, n_dezenas + 1)]
+    for c in dezenas_cols:
+        df[c] = pd.to_numeric(df[c], errors="coerce")
+    df = df.dropna(subset=dezenas_cols)
+    for c in dezenas_cols:
         df[c] = df[c].astype(int)
+
+    df = df.sort_values("concurso")
     return df  # [file:1]
 
 
@@ -122,19 +137,21 @@ def calcular_frequencias(df: pd.DataFrame, n_dezenas: int) -> pd.DataFrame:
 def baixar_xlsx_lotofacil() -> BytesIO:
     resp = requests.get(URL_LOTOFACIL_DOWNLOAD, timeout=30)
     resp.raise_for_status()
-    return BytesIO(resp.content)  # [web:21]
+    return BytesIO(resp.content)  # [file:1]
 
 
 def baixar_xlsx_megasena() -> BytesIO:
     resp = requests.get(URL_MEGA_DOWNLOAD, timeout=30)
     resp.raise_for_status()
-    return BytesIO(resp.content)  # [web:21]
+    return BytesIO(resp.content)  # [file:1]
 
 
 def _limpar_concurso_data(df: pd.DataFrame) -> pd.DataFrame:
     df["concurso"] = pd.to_numeric(df["concurso"], errors="coerce")
     df["data"] = pd.to_datetime(df["data"], dayfirst=True, errors="coerce")
     df = df.dropna(subset=["concurso", "data"])
+    hoje = pd.Timestamp.today().normalize()
+    df = df[(df["data"] >= "1996-01-01") & (df["data"] <= hoje)]
     df["concurso"] = df["concurso"].astype(int)
     return df  # [file:1]
 
@@ -159,9 +176,9 @@ def atualizar_base_lotofacil(buf_xlsx: BytesIO) -> None:
 
     df = _limpar_concurso_data(df)
 
-    for i in range(1, 16):
-        df[f"d{i}"] = pd.to_numeric(df[f"d{i}"], errors="coerce")
     dezenas_cols = [f"d{i}" for i in range(1, 16)]
+    for c in dezenas_cols:
+        df[c] = pd.to_numeric(df[c], errors="coerce")
     df = df.dropna(subset=dezenas_cols)
     for c in dezenas_cols:
         df[c] = df[c].astype(int)
@@ -199,9 +216,9 @@ def atualizar_base_megasena(buf_xlsx: BytesIO) -> None:
 
     df = _limpar_concurso_data(df)
 
-    for i in range(1, 7):
-        df[f"d{i}"] = pd.to_numeric(df[f"d{i}"], errors="coerce")
     dezenas_cols = [f"d{i}" for i in range(1, 7)]
+    for c in dezenas_cols:
+        df[c] = pd.to_numeric(df[c], errors="coerce")
     df = df.dropna(subset=dezenas_cols)
     for c in dezenas_cols:
         df[c] = df[c].astype(int)
