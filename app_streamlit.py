@@ -856,10 +856,11 @@ if pagina == "Gerar jogos":
         if qtd_ss > 0:
             js = gerar_sem_sequencias(
                 qtd_jogos=int(qtd_ss),
-                tam_jogomix,
-                N_UNIVERSO,
-                mix_limite_seq,
+                tam_jogo=tam_jogomix,
+                n_universo=N_UNIVERSO,
+                limite_sequencia=mix_limite_seq,
             )
+
             jogos.extend(js)
             jogos_info.extend({"estrategia": "Sem sequências longas", "jogo": j} for j in js)
 
