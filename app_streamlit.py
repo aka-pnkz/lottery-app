@@ -325,7 +325,7 @@ def gerar_balanceado_par_impar(qtd_jogos: int, tam_jogo: int, n_universo: int) -
         tentativas = 0
         while True:
             tentativas += 1
-            dezenas = np.random.choice(universe, size	tam_jogo, replace=False)
+            dezenas = np.random.choice(universe, size=tam_jogo, replace=False)
             pares, impares = pares_impares(dezenas.tolist())
             if pares not in (0, tam_jogo) and impares not in (0, tam_jogo):
                 jogos.append(sorted(dezenas.tolist()))
