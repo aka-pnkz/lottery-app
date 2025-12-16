@@ -192,26 +192,46 @@ def atualizar_base_lotofacil(buf_xlsx: BytesIO) -> None:
 def atualizar_base_megasena(buf_xlsx: BytesIO) -> None:
     df_raw = pd.read_excel(buf_xlsx)
 
-    col_concurso = "Concurso"
-    col_data = "Data do Sorteio"
-    col_bolas = ["Bola1", "Bola2", "Bola3", "Bola4", "Bola5", "Bola6"]
+    # coluna de concurso
+    possiveis_conc = [c for c in df_raw.columns if isinstance(c, str) and "concurso" in c.lower()]
+    if not possiveis_conc:
+        raise RuntimeError("Não foi encontrada coluna de concurso na planilha da Mega-Sena.")
+    col_concurso = possiveis_conc[0]
 
-    for c in [col_concurso, col_data] + col_bolas:
+    # coluna de data (data + sorteio)
+    possiveis_datas = [
+        c for c in df_raw.columns
+        if isinstance(c, str)
+        and "data" in c.lower()
+        and "sorte" in c.lower()
+    ]
+    if not possiveis_datas:
+        possiveis_datas = [c for c in df_raw.columns if isinstance(c, str) and "data" in c.lower()]
+    if not possiveis_datas:
+        raise RuntimeError("Não foi encontrada coluna de data na planilha da Mega-Sena.")
+    col_data = possiveis_datas[0]
+
+    # colunas das bolas
+    col_bolas: list[str] = []
+    for c in df_raw.columns:
+        if not isinstance(c, str):
+            continue
+        cl = c.lower().replace(" ", "")
+        if "bola" in cl or "dezena" in cl or cl in {"n1", "n2", "n3", "n4", "n5", "n6"}:
+            col_bolas.append(c)
+    if len(col_bolas) < 6:
+        col_bolas = ["Bola1", "Bola2", "Bola3", "Bola4", "Bola5", "Bola6"]
+    col_bolas = col_bolas[:6]
+
+    cols_usar = [col_concurso, col_data] + col_bolas
+    for c in cols_usar:
         if c not in df_raw.columns:
             raise RuntimeError(f"Coluna esperada não encontrada na planilha da Mega-Sena: {c}")
+    df = df_raw[cols_usar].copy()
 
-    df = df_raw[[col_concurso, col_data] + col_bolas].copy()
-
-    rename_map = {
-        col_concurso: "concurso",
-        col_data: "data",
-        "Bola1": "d1",
-        "Bola2": "d2",
-        "Bola3": "d3",
-        "Bola4": "d4",
-        "Bola5": "d5",
-        "Bola6": "d6",
-    }
+    rename_map = {col_concurso: "concurso", col_data: "data"}
+    for i, c in enumerate(col_bolas, start=1):
+        rename_map[c] = f"d{i}"
     df.rename(columns=rename_map, inplace=True)
 
     df = _limpar_concurso_data(df)
@@ -305,7 +325,7 @@ def gerar_balanceado_par_impar(qtd_jogos: int, tam_jogo: int, n_universo: int) -
         tentativas = 0
         while True:
             tentativas += 1
-            dezenas = np.random.choice(universe, size=tam_jogo, replace=False)
+            dezenas = np.random.choice(universe, size	tam_jogo, replace=False)
             pares, impares = pares_impares(dezenas.tolist())
             if pares not in (0, tam_jogo) and impares not in (0, tam_jogo):
                 jogos.append(sorted(dezenas.tolist()))
