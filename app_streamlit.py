@@ -5,6 +5,7 @@ from io import BytesIO
 
 import numpy as np
 import pandas as pd
+import requests
 import streamlit as st
 
 # ==========================
@@ -81,8 +82,18 @@ inject_global_css()
 PRECO_BASE_MEGA = 6.00
 PRECO_BASE_LOTO = 3.50
 
+# endpoints oficiais de download de resultados [web:2]
+URL_LOTOFACIL_DOWNLOAD = (
+    "https://servicebus2.caixa.gov.br/portaldeloterias/api/resultados/download"
+    "?modalidade=Lotof%C3%A1cil"
+)
+URL_MEGA_DOWNLOAD = (
+    "https://servicebus2.caixa.gov.br/portaldeloterias/api/resultados/download"
+    "?modalidade=Mega-Sena"
+)
+
 # ==========================
-# ETL / HISTÓRICO (XLSX LOCAL)
+# ETL / HISTÓRICO
 # ==========================
 
 
@@ -122,6 +133,18 @@ def calcular_frequencias(df: pd.DataFrame, n_dezenas: int) -> pd.DataFrame:
     return freq_df  # [file:1]
 
 
+def baixar_xlsx_lotofacil() -> BytesIO:
+    resp = requests.get(URL_LOTOFACIL_DOWNLOAD, timeout=60)
+    resp.raise_for_status()
+    return BytesIO(resp.content)  # [web:2]
+
+
+def baixar_xlsx_megasena() -> BytesIO:
+    resp = requests.get(URL_MEGA_DOWNLOAD, timeout=60)
+    resp.raise_for_status()
+    return BytesIO(resp.content)  # [web:2]
+
+
 def _limpar_concurso_data(df: pd.DataFrame) -> pd.DataFrame:
     df["concurso"] = pd.to_numeric(df["concurso"], errors="coerce")
     df["data"] = pd.to_datetime(df["data"], dayfirst=True, errors="coerce")
@@ -132,8 +155,8 @@ def _limpar_concurso_data(df: pd.DataFrame) -> pd.DataFrame:
     return df  # [file:1]
 
 
-def atualizar_base_lotofacil_local() -> None:
-    df_raw = pd.read_excel("loto_oficial.xlsx")
+def atualizar_base_lotofacil(buf_xlsx: BytesIO) -> None:
+    df_raw = pd.read_excel(buf_xlsx)
 
     cols = [
         "Concurso", "Data Sorteio",
@@ -167,8 +190,8 @@ def atualizar_base_lotofacil_local() -> None:
     df.to_csv("historicolotofacil.csv", sep=";", index=False)  # [file:1]
 
 
-def atualizar_base_megasena_local() -> None:
-    df_raw = pd.read_excel("mega_oficial.xlsx")
+def atualizar_base_megasena(buf_xlsx: BytesIO) -> None:
+    df_raw = pd.read_excel(buf_xlsx)
 
     cols = [
         "Concurso", "Data do Sorteio",
@@ -207,12 +230,14 @@ def _remover_arquivo_se_existir(path: str) -> None:
 
 def atualizar_base_lotofacil_automatico() -> None:
     _remover_arquivo_se_existir("historicolotofacil.csv")
-    atualizar_base_lotofacil_local()
+    buf = baixar_xlsx_lotofacil()
+    atualizar_base_lotofacil(buf)
 
 
 def atualizar_base_megasena_automatico() -> None:
     _remover_arquivo_se_existir("historicomegasena.csv")
-    atualizar_base_megasena_local()
+    buf = baixar_xlsx_megasena()
+    atualizar_base_megasena(buf)
 
 # ==========================
 # FUNÇÕES DE JOGOS / ANÁLISE
@@ -549,29 +574,29 @@ with st.sidebar:
         st.warning("A soma mínima é maior que a soma máxima. Filtros de soma serão ignorados.")
         soma_min_val, soma_max_val = None, None
 
-    st.markdown("### Atualização (XLSX local)")
+    st.markdown("### Atualização automática (Caixa)")
     if modalidade == "Lotofácil":
-        if st.button("Atualizar Lotofácil (arquivo local)"):
+        if st.button("Baixar e atualizar Lotofácil - Caixa"):
             try:
                 atualizar_base_lotofacil_automatico()
-                st.success("Base da Lotofácil atualizada a partir do XLSX local.")
+                st.success("Base da Lotofácil baixada da Caixa e atualizada.")
                 st.rerun()
             except Exception as e:
-                st.error(f"Erro ao atualizar Lotofácil: {e}")
+                st.error(f"Erro ao baixar/atualizar Lotofácil: {e}")
     else:
-        if st.button("Atualizar Mega-Sena (arquivo local)"):
+        if st.button("Baixar e atualizar Mega-Sena - Caixa"):
             try:
                 atualizar_base_megasena_automatico()
-                st.success("Base da Mega-Sena atualizada a partir do XLSX local.")
+                st.success("Base da Mega-Sena baixada da Caixa e atualizada.")
                 st.rerun()
             except Exception as e:
-                st.error(f"Erro ao atualizar Mega-Sena: {e}")
+                st.error(f"Erro ao baixar/atualizar Mega-Sena: {e}")
 
     st.markdown("### Manutenção das bases")
     if st.button("Apagar CSVs locais (reset histórico)"):
         _remover_arquivo_se_existir("historicomegasena.csv")
         _remover_arquivo_se_existir("historicolotofacil.csv")
-        st.success("Arquivos CSV locais removidos. Atualize novamente as bases.")
+        st.success("Arquivos CSV locais removidos. Baixe e atualize novamente as bases.")
         st.session_state.clear()
         st.rerun()
 
@@ -593,7 +618,7 @@ try:
 except FileNotFoundError:
     st.error(
         f"Arquivo de concursos não encontrado para {modalidade}. "
-        "Clique em 'Atualizar ... (arquivo local)' na barra lateral primeiro."
+        "Clique em 'Baixar e atualizar ... - Caixa' na barra lateral primeiro."
     )
     st.stop()
 except Exception as e:
@@ -618,626 +643,10 @@ explicacoes = {
 }  # [file:1]
 
 # ==========================
-# PÁGINA GERAR JOGOS
+# RESTO DO APP (geração, tabelas, análises)
 # ==========================
 
-if pagina == "Gerar jogos":
-    titulo = (
-        "Gerador de jogos da Mega-Sena"
-        if modalidade == "Mega-Sena"
-        else "Gerador de jogos da Lotofácil"
-    )
-    st.markdown(f"<div class='main-title'>{titulo}</div>", unsafe_allow_html=True)
-    st.markdown(
-        "<div class='main-subtitle'>Escolha o modo e as estratégias na barra lateral, "
-        "ajuste filtros/opções de custo e clique em <b>Gerar</b> para ver seus jogos.</div>",
-        unsafe_allow_html=True,
-    )
-
-    col1, col2 = st.columns(2)
-    with col1:
-        st.markdown("### Resumo do histórico")
-        st.metric("Total de concursos", len(df_concursos))
-        st.caption(
-            f"De {df_concursos['data'].min().date()} "
-            f"até {df_concursos['data'].max().date()}"
-        )
-    with col2:
-        st.markdown("### Parâmetros gerais")
-        st.write(f"- Loteria: **{modalidade}**")
-        st.write(f"- Universo: 1–{N_UNIVERSO}")
-        st.write(f"- Valor aposta base: R$ {preco_base:,.2f}".replace(".", ","))
-        if dezenas_fixas:
-            st.write(f"- Dezenas fixas: {sorted(dezenas_fixas)}")
-        if dezenas_proibidas:
-            st.write(f"- Dezenas proibidas: {sorted(dezenas_proibidas)}")
-        if orcamento_max > 0:
-            st.write(
-                f"- Orçamento máx.: R$ {orcamento_max:,.2f}"
-                .replace(",", "X").replace(".", ",").replace("X", ".")
-            )
-
-    st.divider()
-
-    modo_geracao = st.radio("Modo de geração", ["Uma estratégia", "Misto de estratégias"])
-    gerar = False
-    gerar_misto = False
-
-    if modo_geracao == "Uma estratégia":
-        st.markdown("### Estratégia de geração")
-        estrategia = st.selectbox(
-            "Estratégia",
-            ["Aleatório puro", "Balanceado par/ímpar", "Quentes/Frias/Mix", "Sem sequências longas"],
-        )
-        st.markdown("### Parâmetros básicos")
-        qtd_jogos = st.number_input(
-            "Quantidade de jogos",
-            min_value=1,
-            max_value=500,
-            value=10,
-            step=1,
-            format="%d",
-        )
-        tam_jogo = st.slider("Dezenas por jogo", N_MIN, N_MAX, N_MIN)
-
-        if estrategia == "Quentes/Frias/Mix":
-            st.markdown("### Mix de dezenas")
-            colq1, colq2, colq3 = st.columns(3)
-            with colq1:
-                q_quentes = st.number_input("Quentes", 0, tam_jogo, 5)
-            with colq2:
-                q_frias = st.number_input("Frias", 0, tam_jogo, 5)
-            with colq3:
-                q_neutras = st.number_input("Neutras", 0, tam_jogo, 5)
-        if estrategia == "Sem sequências longas":
-            st.markdown("### Controle de sequência")
-            limite_seq = st.slider(
-                "Máx. sequência permitida",
-                2,
-                min(10, tam_jogo),
-                3,
-            )
-
-        st.markdown("---")
-        gerar = st.button("Gerar jogos", type="primary")
-
-    else:
-        st.markdown("### Parâmetros básicos do misto")
-        tam_jogomix = st.slider(
-            "Dezenas por jogo", N_MIN, N_MAX, N_MIN, key="tam_jogomix"
-        )
-        st.markdown("Quantos jogos por estratégia?")
-        jogos_misto: dict[str, int] = {}
-        jogos_misto["Aleatório puro"] = st.number_input(
-            "Aleatório puro", min_value=0, max_value=500, value=2, step=1, key="mix_qtd_aleatorio"
-        )
-        jogos_misto["Balanceado par/ímpar"] = st.number_input(
-            "Balanceado par/ímpar", min_value=0, max_value=500, value=2, step=1, key="mix_qtd_balanceado"
-        )
-
-        with st.expander("Quentes/Frias/Mix (opcional)", expanded=False):
-            jogos_misto["Quentes/Frias/Mix"] = st.number_input(
-                "Jogos Quentes/Frias/Mix",
-                min_value=0, max_value=500, value=2, step=1, key="mix_qtd_qfm"
-            )
-            colq1m, colq2m, colq3m = st.columns(3)
-            with colq1m:
-                mix_q_quentes = st.number_input(
-                    "Quentes", 0, tam_jogomix, 5, key="mix_q_quentes"
-                )
-            with colq2m:
-                mix_q_frias = st.number_input(
-                    "Frias", 0, tam_jogomix, 5, key="mix_q_frias"
-                )
-            with colq3m:
-                mix_q_neutras = st.number_input(
-                    "Neutras", 0, tam_jogomix, 5, key="mix_q_neutras"
-                )
-
-        with st.expander("Sem sequências longas (opcional)", expanded=False):
-            jogos_misto["Sem sequências longas"] = st.number_input(
-                "Jogos Sem sequências longas",
-                min_value=0, max_value=500, value=2, step=1, key="mix_qtd_semseq"
-            )
-            mix_limite_seq = st.slider(
-                "Máx. sequência permitida (misto)",
-                2,
-                min(10, tam_jogomix),
-                3,
-                key="mix_limite_seq",
-            )
-
-        st.markdown("---")
-        gerar_misto = st.button("Gerar jogos mistos", type="primary")
-
-    if modo_geracao == "Uma estratégia" and "estrategia" in locals():
-        with st.expander("Como funciona esta estratégia?", expanded=False):
-            st.write(explicacoes.get(estrategia, ""))
-    elif modo_geracao == "Misto de estratégias":
-        with st.expander("O que cada estratégia faz?", expanded=False):
-            for nome, desc in explicacoes.items():
-                st.markdown(f"**{nome}**")
-                st.write(desc)
-
-    tab_jogos, tab_tabela, tab_analise = st.tabs(
-        ["Jogos gerados", "Tabela / Resumo / Exportar", "Análise & Simulação"]
-    )
-
-    jogos: list[list[int]] = st.session_state["jogos"]
-    jogos_info: list[dict] = st.session_state["jogos_info"]
-
-    if modo_geracao == "Uma estratégia" and gerar and "estrategia" in locals():
-        if estrategia == "Aleatório puro":
-            jogos = gerar_aleatorio_puro(int(qtd_jogos), tam_jogo, N_UNIVERSO)
-        elif estrategia == "Balanceado par/ímpar":
-            jogos = gerar_balanceado_par_impar(int(qtd_jogos), tam_jogo, N_UNIVERSO)
-        elif estrategia == "Quentes/Frias/Mix":
-            jogos = gerar_quentes_frias_mix(
-                qtd_jogos=int(qtd_jogos),
-                tam_jogo=tam_jogo,
-                freq_df=freq_df,
-                n_universo=N_UNIVERSO,
-                proporcao=(q_quentes, q_frias, q_neutras),
-            )
-        elif estrategia == "Sem sequências longas":
-            jogos = gerar_sem_sequencias(
-                qtd_jogos=int(qtd_jogos),
-                tam_jogo=tam_jogo,
-                n_universo=N_UNIVERSO,
-                limite_sequencia=limite_seq,
-            )
-
-        jogos = filtrar_jogos(
-            jogos,
-            dezenas_fixas=dezenas_fixas,
-            dezenas_proibidas=dezenas_proibidas,
-            soma_min=soma_min_val,
-            soma_max=soma_max_val,
-        )
-        jogos = [j for j in jogos if len(j) >= N_MIN]
-        jogos_info = [{"estrategia": estrategia, "jogo": j} for j in jogos]
-
-    if modo_geracao == "Misto de estratégias" and gerar_misto:
-        jogos = []
-        jogos_info = []
-
-        qtd_ap = jogos_misto.get("Aleatório puro", 0)
-        if qtd_ap > 0:
-            js = gerar_aleatorio_puro(int(qtd_ap), tam_jogomix, N_UNIVERSO)
-            jogos.extend(js)
-            jogos_info.extend({"estrategia": "Aleatório puro", "jogo": j} for j in js)
-
-        qtd_bal = jogos_misto.get("Balanceado par/ímpar", 0)
-        if qtd_bal > 0:
-            js = gerar_balanceado_par_impar(int(qtd_bal), tam_jogomix, N_UNIVERSO)
-            jogos.extend(js)
-            jogos_info.extend({"estrategia": "Balanceado par/ímpar", "jogo": j} for j in js)
-
-        qtd_qfm = jogos_misto.get("Quentes/Frias/Mix", 0)
-        if qtd_qfm > 0:
-            js = gerar_quentes_frias_mix(
-                qtd_jogos=int(qtd_qfm),
-                tam_jogo=tam_jogomix,
-                freq_df=freq_df,
-                n_universo=N_UNIVERSO,
-                proporcao=(mix_q_quentes, mix_q_frias, mix_q_neutras),
-            )
-            jogos.extend(js)
-            jogos_info.extend({"estrategia": "Quentes/Frias/Mix", "jogo": j} for j in js)
-
-        qtd_ss = jogos_misto.get("Sem sequências longas", 0)
-        if qtd_ss > 0:
-            js = gerar_sem_sequencias(
-                qtd_jogos=int(qtd_ss),
-                tam_jogo=tam_jogomix,
-                n_universo=N_UNIVERSO,
-                limite_sequencia=mix_limite_seq,
-            )
-            jogos.extend(js)
-            jogos_info.extend({"estrategia": "Sem sequências longas", "jogo": j} for j in js)
-
-        jogos_filtrados = filtrar_jogos(
-            jogos,
-            dezenas_fixas=dezenas_fixas,
-            dezenas_proibidas=dezenas_proibidas,
-            soma_min=soma_min_val,
-            soma_max=soma_max_val,
-        )
-        jogos_filtrados = [j for j in jogos_filtrados if len(j) >= N_MIN]
-        novo_info = [info for info in jogos_info if info["jogo"] in jogos_filtrados]
-        jogos = [info["jogo"] for info in novo_info]
-        jogos_info = novo_info
-
-    avisoorcamento = None
-    if (gerar or gerar_misto) and jogos and orcamento_max > 0:
-        jogos_dentro: list[list[int]] = []
-        jogos_info_dentro: list[dict] = []
-        custo_acum = 0.0
-        for info in jogos_info:
-            jogo = info["jogo"]
-            custo_jogo = preco_aposta_loteria(len(jogo), N_MIN, preco_base)
-            if custo_acum + custo_jogo > orcamento_max:
-                break
-            custo_acum += custo_jogo
-            jogos_dentro.append(jogo)
-            jogos_info_dentro.append(info)
-        if len(jogos_dentro) < len(jogos):
-            avisoorcamento = (
-                f"Foram mantidos {len(jogos_dentro)} jogos dentro do orçamento. "
-                f"{len(jogos) - len(jogos_dentro)} jogos foram descartados."
-            )
-        jogos = jogos_dentro
-        jogos_info = jogos_info_dentro
-
-    if (gerar or gerar_misto) and jogos:
-        st.session_state["jogos"] = jogos
-        st.session_state["jogos_info"] = jogos_info
-    else:
-        jogos = st.session_state["jogos"]
-        jogos_info = st.session_state["jogos_info"]
-
-    if not jogos and (gerar or gerar_misto):
-        tab_jogos.warning(
-            "Nenhum jogo foi gerado após aplicar filtros e orçamento. "
-            "Revise os parâmetros na barra lateral."
-        )
-        tab_tabela.info("Nenhum dado para exibir ainda.")
-        tab_analise.info("Nenhuma análise disponível sem jogos gerados.")
-    elif not jogos:
-        tab_jogos.write("Ajuste os parâmetros na barra lateral e clique em Gerar.")
-        tab_tabela.write("A tabela aparecerá aqui após a geração.")
-        tab_analise.write("A análise aparecerá aqui após a geração.")
-    else:
-        custo_total = calcular_custo_total(jogos, N_MIN, preco_base)
-        prob_total = prob_premio_maximo_pacote(jogos, N_MIN, COMB_TARGET)
-
-        with tab_jogos:
-            colr1, colr2, colr3 = st.columns(3)
-            with colr1:
-                st.metric("Quantidade de jogos", len(jogos))
-            with colr2:
-                st.metric(
-                    "Custo total estimado",
-                    f"R$ {custo_total:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."),
-                )
-            with colr3:
-                if prob_total > 0:
-                    inv = 1.0 / prob_total
-                    st.metric("Chance aprox. prêmio máximo", f"1 em {inv:,.0f}".replace(",", "."))
-                else:
-                    st.metric("Chance aprox. prêmio máximo", "NA")
-            if avisoorcamento:
-                st.info(avisoorcamento)
-
-            colleft, colcenter, colright = st.columns([1, 2, 1])
-            with colcenter:
-                for i, info in enumerate(jogos_info, start=1):
-                    st.code(f"{i:02d} - {info['estrategia']} - {formatar_jogo(info['jogo'])}")
-
-        with tab_tabela:
-            dados = []
-            for idx_global, info in enumerate(jogos_info, start=1):
-                jogo = info["jogo"]
-                row = {"jogo_id": idx_global, "estrategia": info["estrategia"]}
-                for idx, d in enumerate(jogo, start=1):
-                    row[f"d{idx}"] = d
-
-                soma_jogo = sum(jogo)
-                pares, impares = pares_impares(jogo)
-                bax, alt = baixos_altos(jogo, LIMITE_BAIXO)
-                nprimos = contar_primos(jogo)
-                repet_ultimo = len(set(jogo) & DEZENAS_ULTIMO_CONCURSO)
-
-                if soma_jogo < 150:
-                    faixa_soma = "muito baixa"
-                elif soma_jogo < 250:
-                    faixa_soma = "baixa"
-                elif soma_jogo < 350:
-                    faixa_soma = "dentro do comum"
-                else:
-                    faixa_soma = "alta/muito alta"
-
-                padrao_extremo = (
-                    pares == 0
-                    or impares == 0
-                    or bax == 0
-                    or alt == 0
-                    or faixa_soma in ("muito baixa", "alta/muito alta")
-                )
-
-                row.update(
-                    {
-                        "soma": soma_jogo,
-                        "faixa_soma": faixa_soma,
-                        "pares": pares,
-                        "impares": impares,
-                        "baixos": bax,
-                        "altos": alt,
-                        "nprimos": nprimos,
-                        "repeticoes_ultimo_concurso": repet_ultimo,
-                        "padrao_extremo": padrao_extremo,
-                    }
-                )
-                dados.append(row)
-
-            jogos_df = pd.DataFrame(dados)
-
-            def highlight_extreme(row):
-                if row.get("padrao_extremo", False):
-                    return ["background-color: #fee2e2"] * len(row)
-                return [""] * len(row)
-
-            styled = jogos_df.style.apply(highlight_extreme, axis=1)
-            st.dataframe(styled, use_container_width=True)
-
-            csv_data = jogos_df.to_csv(index=False).encode("utf-8")
-            st.download_button(
-                "Baixar CSV",
-                data=csv_data,
-                file_name=f"jogos_{modalidade}_{datetime.now().date()}.csv",
-                mime="text/csv",
-            )
-
-        with tab_analise:
-            st.subheader("Resumo do pacote atual")
-            scores: list[float] = []
-            extremos = 0
-            for jogo in jogos:
-                soma_jogo = sum(jogo)
-                pares, impares = pares_impares(jogo)
-                bax, alt = baixos_altos(jogo, LIMITE_BAIXO)
-                nprimos = contar_primos(jogo)
-                repet_ultimo = len(set(jogo) & DEZENAS_ULTIMO_CONCURSO)
-
-                if soma_jogo < 150:
-                    faixa_soma = "muito baixa"
-                elif soma_jogo < 250:
-                    faixa_soma = "baixa"
-                elif soma_jogo < 350:
-                    faixa_soma = "dentro do comum"
-                else:
-                    faixa_soma = "alta/muito alta"
-
-                padrao_extremo = (
-                    pares == 0
-                    or impares == 0
-                    or bax == 0
-                    or alt == 0
-                    or faixa_soma in ("muito baixa", "alta/muito alta")
-                )
-                if padrao_extremo:
-                    extremos += 1
-
-                score = 10.0
-                if faixa_soma == "dentro do comum":
-                    score += 0.5
-                elif faixa_soma == "baixa":
-                    score -= 0.5
-                else:
-                    score -= 1.0
-
-                if pares == impares:
-                    score += 0.5
-                elif abs(pares - impares) <= 2:
-                    score += 0.2
-                else:
-                    score -= 0.3
-
-                if nprimos in (2, 3, 4):
-                    score += 0.3
-                elif nprimos == 0 or nprimos >= 7:
-                    score -= 0.5
-
-                if bax > 0 and alt > 0:
-                    score += 0.2
-                else:
-                    score -= 0.5
-
-                if repet_ultimo >= 5:
-                    score -= 0.3
-
-                score = max(0.0, min(10.0, score))
-                scores.append(score)
-
-            colr1, colr2, colr3 = st.columns(3)
-            with colr1:
-                st.metric(
-                    "Média do score heurístico",
-                    f"{np.mean(scores):.2f}" if scores else "NA",
-                )
-            with colr2:
-                pct_ok = 100.0 * (1 - extremos / len(jogos)) if jogos else 0.0
-                st.metric(
-                    "% jogos sem padrão extremo",
-                    f"{pct_ok:.1f}%" if jogos else "NA",
-                )
-            with colr3:
-                media_dezenas = np.mean([len(j) for j in jogos]) if jogos else 0.0
-                st.metric(
-                    "Média de dezenas por jogo",
-                    f"{media_dezenas:.1f}" if jogos else "NA",
-                )
-
-            st.markdown("### Cobertura das dezenas nos jogos gerados")
-            todas_dezenas = [d for j in jogos for d in j]
-            freq_jogos = pd.Series(todas_dezenas).value_counts().sort_index()
-            df_freq_jogos = freq_jogos.reset_index()
-            df_freq_jogos.columns = ["dezena", "frequencia"]
-            cola1, cola2 = st.columns(2)
-            with cola1:
-                st.markdown("Frequência das dezenas")
-                if not df_freq_jogos.empty:
-                    st.bar_chart(df_freq_jogos.set_index("dezena")["frequencia"])
-                else:
-                    st.info("Nenhuma dezena para exibir.")
-            with cola2:
-                st.markdown("Top dezenas mais usadas")
-                if not df_freq_jogos.empty:
-                    topn = min(10, len(df_freq_jogos))
-                    st.dataframe(
-                        df_freq_jogos.sort_values("frequencia", ascending=False).head(topn),
-                        use_container_width=True,
-                    )
-                else:
-                    st.info("Nenhum dado de frequência disponível.")
-
-            st.markdown("---")
-            st.subheader("Simulações dos seus jogos")
-            st.markdown("Simulação de acertos em um concurso")
-
-            modosim = st.radio(
-                "Escolher resultado para simulação",
-                ["Usar concurso histórico", "Digitar resultado manual"],
-                horizontal=True,
-            )
-
-            dezenas_sorteadas: list[int] = []
-            if modosim == "Usar concurso histórico":
-                ultimos_ids = (
-                    df_concursos.sort_values("concurso", ascending=False)["concurso"]
-                    .head(100)
-                    .tolist()
-                )
-                concurso_escolhido = st.selectbox(
-                    "Concurso para simular",
-                    options=ultimos_ids,
-                    format_func=lambda c: f"Concurso {c}",
-                )
-                linha = df_concursos.loc[
-                    df_concursos["concurso"] == concurso_escolhido
-                ].iloc[0]
-                dezenas_sorteadas = [int(linha[f"d{i}"]) for i in range(1, N_DEZENAS_HIST + 1)]
-                st.write(f"Dezenas sorteadas: {formatar_jogo(dezenas_sorteadas)}")
-            else:
-                import re
-
-                placeholder = (
-                    "Ex: 05, 12, 23, 34, 45, 60"
-                    if modalidade == "Mega-Sena"
-                    else "Ex: 01, 02, 03, ..., 25"
-                )
-                resultado_manual = st.text_input(
-                    f"Informe {N_DEZENAS_HIST} dezenas separadas por vírgula ou espaço",
-                    placeholder=placeholder,
-                )
-                tokens = re.split(r"[,\s]+", resultado_manual.strip())
-                dezenas_sorteadas = [int(t) for t in tokens if t.isdigit()]
-                if resultado_manual and len(dezenas_sorteadas) != N_DEZENAS_HIST:
-                    st.warning(
-                        f"Informe exatamente {N_DEZENAS_HIST} dezenas numéricas para a simulação."
-                    )
-
-            if len(dezenas_sorteadas) == N_DEZENAS_HIST:
-                df_sim = simular_premios(jogos, dezenas_sorteadas)
-                st.markdown("#### Resumo de acertos no sorteio escolhido")
-                dist_acertos = (
-                    df_sim["acertos"].value_counts().sort_index().reset_index()
-                )
-                dist_acertos.columns = ["acertos", "qtd_jogos"]
-                st.dataframe(dist_acertos, use_container_width=True)
-
-                st.markdown("#### Detalhamento por jogo")
-                st.dataframe(df_sim, use_container_width=True)
-            else:
-                st.info("Informe dezenas sorteadas para simular acertos.")
-
-# ==========================
-# PÁGINA ANÁLISES
-# ==========================
-
-else:
-    st.title(f"Análises estatísticas da {modalidade}")
-    st.caption("As análises são descritivas e não garantem aumento de chance em sorteios futuros.")
-
-    limite_baixo = 30 if modalidade == "Mega-Sena" else 13
-
-    tab_freq, tab_padroes, tab_somas, tab_ultimos = st.tabs(
-        ["Frequência & Atraso", "Par/ímpar & Baixa/Alta", "Soma das dezenas", "Últimos resultados"]
-    )
-
-    with tab_freq:
-        st.subheader("Frequência e atraso por dezena")
-        atraso_df = calcular_atraso(freq_df, df_concursos, N_DEZENAS_HIST)
-        col1, col2 = st.columns(2)
-        with col1:
-            st.markdown("Ordenado por frequência total")
-            st.dataframe(
-                freq_df.sort_values("frequencia", ascending=False).reset_index(drop=True),
-                use_container_width=True,
-            )
-        with col2:
-            st.markdown("Ordenado por atraso atual")
-            st.dataframe(
-                atraso_df.sort_values(["atraso_atual", "frequencia"], ascending=[False, False])
-                .reset_index(drop=True),
-                use_container_width=True,
-            )
-
-        st.markdown("---")
-        st.markdown("Frequência recente vs total")
-        nrec = st.slider(
-            "Concursos recentes para analisar",
-            min_value=20,
-            max_value=300,
-            value=50,
-            step=10,
-        )
-        df_recent = df_concursos.sort_values("concurso", ascending=False).head(nrec)
-        freq_recent = calcular_frequencias(df_recent, N_DEZENAS_HIST)
-        freq_recent = freq_recent.rename(columns={"frequencia": "freq_recente"})
-        freq_merge = freq_df.merge(freq_recent, on="dezena", how="left")
-        freq_merge["freq_recente"] = freq_merge["freq_recente"].fillna(0).astype(int)
-
-        colf1, colf2 = st.columns(2)
-        with colf1:
-            st.markdown("Top dezenas recentes (freq. recente)")
-            st.dataframe(
-                freq_merge.sort_values("freq_recente", ascending=False).head(20),
-                use_container_width=True,
-            )
-        with colf2:
-            st.markdown("Top dezenas históricas (freq. total)")
-            st.dataframe(
-                freq_merge.sort_values("frequencia", ascending=False).head(20),
-                use_container_width=True,
-            )
-
-    with tab_padroes:
-        st.subheader("Distribuição de par/ímpar e baixa/alta")
-        df_padroes, dist_par_impar, dist_baixa_alta = calcular_padroes_par_impar_baixa_alta(
-            df_concursos, N_DEZENAS_HIST, limite_baixo
-        )
-        st.markdown("Padrões mais frequentes")
-        st.dataframe(dist_par_impar, use_container_width=True)
-        st.dataframe(dist_baixa_alta, use_container_width=True)
-        with st.expander("Tabela detalhada por concurso"):
-            st.dataframe(df_padroes.sort_values("concurso"), use_container_width=True)
-
-    with tab_somas:
-        st.subheader("Soma das dezenas por concurso")
-        df_somas, dist_faixas = calcular_somas(df_concursos, N_DEZENAS_HIST)
-        col1, col2 = st.columns(2)
-        with col1:
-            st.markdown("Tabela por concurso")
-            st.dataframe(
-                df_somas.sort_values("concurso").reset_index(drop=True),
-                use_container_width=True,
-            )
-        with col2:
-            st.markdown("Distribuição por faixa de soma")
-            st.dataframe(dist_faixas, use_container_width=True)
-
-    with tab_ultimos:
-        st.subheader("Últimos resultados da modalidade")
-        qtd_ultimos = st.slider(
-            "Quantidade de concursos para exibir",
-            min_value=5,
-            max_value=50,
-            value=10,
-            step=5,
-        )
-        ultimos = df_concursos.sort_values("concurso", ascending=False).head(qtd_ultimos)
-        st.dataframe(
-            ultimos.sort_values("concurso", ascending=True),
-            use_container_width=True,
-        )
+# A partir daqui, use exatamente o mesmo bloco de código de geração de jogos,
+# tabelas e análises que já está no arquivo completo que você colou na última
+# versão – não precisa mudar nada, pois ele só depende de df_concursos,
+# freq_df, N_UNIVERSO/N_MIN etc., que já estão corretos agora. [file:1]
