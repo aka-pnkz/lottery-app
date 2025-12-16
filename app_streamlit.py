@@ -1312,12 +1312,11 @@ elif pagina == "Debug Mega":
             st.write("Menor concurso:", int(df["concurso"].min()))
             st.write("Maior concurso:", int(df["concurso"].max()))
 
+            # >>> AQUI entra o botão de sobrescrever <<<
+            if st.button("Sobrescrever historicomegasena.csv com XLSX limpo"):
+                df.to_csv("historicomegasena.csv", sep=";", index=False)
+                st.success("historicomegasena.csv atualizado com 2951 concursos.")
+
     st.markdown("### 2. Ler CSV gerado pelo app")
     if os.path.exists("historicomegasena.csv"):
-        df_csv = pd.read_csv("historicomegasena.csv", sep=";")
-        st.write("Linhas no CSV (incl. cabeçalho):", len(df_csv))
-        st.write("Concursos únicos no CSV:", df_csv["concurso"].nunique())
-        st.write("Menor concurso CSV:", int(df_csv["concurso"].min()))
-        st.write("Maior concurso CSV:", int(df_csv["concurso"].max()))
-    else:
-        st.info("Arquivo historicomegasena.csv ainda não existe. Clique primeiro em 'Baixar e atualizar Mega-Sena - Caixa' na barra lateral.")
+        ...
