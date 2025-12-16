@@ -5,12 +5,12 @@ from io import BytesIO
 
 import numpy as np
 import pandas as pd
-import requests
 import streamlit as st
 
 # ==========================
 # CONFIG GERAL
 # ==========================
+
 st.set_page_config(
     page_title="Lottery Helper",
     page_icon="🎰",
@@ -81,18 +81,8 @@ inject_global_css()
 PRECO_BASE_MEGA = 6.00
 PRECO_BASE_LOTO = 3.50
 
-# endpoints oficiais de download de resultados [file:1]
-URL_LOTOFACIL_DOWNLOAD = (
-    "https://servicebus2.caixa.gov.br/portaldeloterias/api/resultados/download"
-    "?modalidade=Lotof%C3%A1cil"
-)
-URL_MEGA_DOWNLOAD = (
-    "https://servicebus2.caixa.gov.br/portaldeloterias/api/resultados/download"
-    "?modalidade=Mega-Sena"
-)
-
 # ==========================
-# ETL / HISTÓRICO
+# ETL / HISTÓRICO (XLSX LOCAL)
 # ==========================
 
 
@@ -132,18 +122,6 @@ def calcular_frequencias(df: pd.DataFrame, n_dezenas: int) -> pd.DataFrame:
     return freq_df  # [file:1]
 
 
-def baixar_xlsx_lotofacil() -> BytesIO:
-    resp = requests.get(URL_LOTOFACIL_DOWNLOAD, timeout=30)
-    resp.raise_for_status()
-    return BytesIO(resp.content)  # [file:1]
-
-
-def baixar_xlsx_megasena() -> BytesIO:
-    resp = requests.get(URL_MEGA_DOWNLOAD, timeout=30)
-    resp.raise_for_status()
-    return BytesIO(resp.content)  # [file:1]
-
-
 def _limpar_concurso_data(df: pd.DataFrame) -> pd.DataFrame:
     df["concurso"] = pd.to_numeric(df["concurso"], errors="coerce")
     df["data"] = pd.to_datetime(df["data"], dayfirst=True, errors="coerce")
@@ -154,91 +132,69 @@ def _limpar_concurso_data(df: pd.DataFrame) -> pd.DataFrame:
     return df  # [file:1]
 
 
-def atualizar_base_lotofacil(buf_xlsx: BytesIO) -> None:
-    df_raw = pd.read_excel(buf_xlsx)
+def atualizar_base_lotofacil_local() -> None:
+    df_raw = pd.read_excel("loto_oficial.xlsx")
 
-    col_concurso = "Concurso"
-    col_data = "Data Sorteio"
-    col_bolas = [f"Bola{i}" for i in range(1, 16)]
-
-    for c in [col_concurso, col_data] + col_bolas:
+    cols = [
+        "Concurso", "Data Sorteio",
+        "Bola1", "Bola2", "Bola3", "Bola4", "Bola5",
+        "Bola6", "Bola7", "Bola8", "Bola9", "Bola10",
+        "Bola11", "Bola12", "Bola13", "Bola14", "Bola15",
+    ]
+    for c in cols:
         if c not in df_raw.columns:
-            raise RuntimeError(f"Coluna esperada não encontrada na planilha da Lotofácil: {c}")
+            raise RuntimeError(f"Coluna ausente na Lotofácil: {c}")
 
-    df = df_raw[[col_concurso, col_data] + col_bolas].copy()
+    df = df_raw[cols].copy()
 
-    rename_map = {col_concurso: "concurso", col_data: "data"}
+    rename = {"Concurso": "concurso", "Data Sorteio": "data"}
     for i in range(1, 16):
-        rename_map[f"Bola{i}"] = f"d{i}"
-    df.rename(columns=rename_map, inplace=True)
+        rename[f"Bola{i}"] = f"d{i}"
+    df.rename(columns=rename, inplace=True)
 
     df = _limpar_concurso_data(df)
 
-    dezenas_cols = [f"d{i}" for i in range(1, 16)]
-    for c in dezenas_cols:
+    dezenas = [f"d{i}" for i in range(1, 16)]
+    for c in dezenas:
         df[c] = pd.to_numeric(df[c], errors="coerce")
-    df = df.dropna(subset=dezenas_cols)
-    for c in dezenas_cols:
+    df = df.dropna(subset=dezenas)
+    for c in dezenas:
         df[c] = df[c].astype(int)
 
-    df[dezenas_cols] = np.sort(df[dezenas_cols].values, axis=1)
+    df[dezenas] = np.sort(df[dezenas].values, axis=1)
     df = df.sort_values("concurso")
 
     df.to_csv("historicolotofacil.csv", sep=";", index=False)  # [file:1]
 
 
-def atualizar_base_megasena(buf_xlsx: BytesIO) -> None:
-    df_raw = pd.read_excel(buf_xlsx)
+def atualizar_base_megasena_local() -> None:
+    df_raw = pd.read_excel("mega_oficial.xlsx")
 
-    possiveis_conc = [c for c in df_raw.columns if isinstance(c, str) and "concurso" in c.lower()]
-    if not possiveis_conc:
-        raise RuntimeError("Não foi encontrada coluna de concurso na planilha da Mega-Sena.")
-    col_concurso = possiveis_conc[0]
-
-    possiveis_datas = [
-        c for c in df_raw.columns
-        if isinstance(c, str)
-        and "data" in c.lower()
-        and "sorte" in c.lower()
+    cols = [
+        "Concurso", "Data do Sorteio",
+        "Bola1", "Bola2", "Bola3", "Bola4", "Bola5", "Bola6",
     ]
-    if not possiveis_datas:
-        possiveis_datas = [c for c in df_raw.columns if isinstance(c, str) and "data" in c.lower()]
-    if not possiveis_datas:
-        raise RuntimeError("Não foi encontrada coluna de data na planilha da Mega-Sena.")
-    col_data = possiveis_datas[0]
-
-    col_bolas: list[str] = []
-    for c in df_raw.columns:
-        if not isinstance(c, str):
-            continue
-        cl = c.lower().replace(" ", "")
-        if "bola" in cl or "dezena" in cl or cl in {"n1", "n2", "n3", "n4", "n5", "n6"}:
-            col_bolas.append(c)
-    if len(col_bolas) < 6:
-        col_bolas = ["Bola1", "Bola2", "Bola3", "Bola4", "Bola5", "Bola6"]
-    col_bolas = col_bolas[:6]
-
-    cols_usar = [col_concurso, col_data] + col_bolas
-    for c in cols_usar:
+    for c in cols:
         if c not in df_raw.columns:
-            raise RuntimeError(f"Coluna esperada não encontrada na planilha da Mega-Sena: {c}")
-    df = df_raw[cols_usar].copy()
+            raise RuntimeError(f"Coluna ausente na Mega-Sena: {c}")
 
-    rename_map = {col_concurso: "concurso", col_data: "data"}
-    for i, c in enumerate(col_bolas, start=1):
-        rename_map[c] = f"d{i}"
-    df.rename(columns=rename_map, inplace=True)
+    df = df_raw[cols].copy()
+
+    rename = {"Concurso": "concurso", "Data do Sorteio": "data"}
+    for i in range(1, 7):
+        rename[f"Bola{i}"] = f"d{i}"
+    df.rename(columns=rename, inplace=True)
 
     df = _limpar_concurso_data(df)
 
-    dezenas_cols = [f"d{i}" for i in range(1, 7)]
-    for c in dezenas_cols:
+    dezenas = [f"d{i}" for i in range(1, 7)]
+    for c in dezenas:
         df[c] = pd.to_numeric(df[c], errors="coerce")
-    df = df.dropna(subset=dezenas_cols)
-    for c in dezenas_cols:
+    df = df.dropna(subset=dezenas)
+    for c in dezenas:
         df[c] = df[c].astype(int)
 
-    df[dezenas_cols] = np.sort(df[dezenas_cols].values, axis=1)
+    df[dezenas] = np.sort(df[dezenas].values, axis=1)
     df = df.sort_values("concurso")
 
     df.to_csv("historicomegasena.csv", sep=";", index=False)  # [file:1]
@@ -251,14 +207,12 @@ def _remover_arquivo_se_existir(path: str) -> None:
 
 def atualizar_base_lotofacil_automatico() -> None:
     _remover_arquivo_se_existir("historicolotofacil.csv")
-    buf = baixar_xlsx_lotofacil()
-    atualizar_base_lotofacil(buf)
+    atualizar_base_lotofacil_local()
 
 
 def atualizar_base_megasena_automatico() -> None:
     _remover_arquivo_se_existir("historicomegasena.csv")
-    buf = baixar_xlsx_megasena()
-    atualizar_base_megasena(buf)
+    atualizar_base_megasena_local()
 
 # ==========================
 # FUNÇÕES DE JOGOS / ANÁLISE
@@ -595,29 +549,29 @@ with st.sidebar:
         st.warning("A soma mínima é maior que a soma máxima. Filtros de soma serão ignorados.")
         soma_min_val, soma_max_val = None, None
 
-    st.markdown("### Atualização automática")
+    st.markdown("### Atualização (XLSX local)")
     if modalidade == "Lotofácil":
-        if st.button("Baixar e atualizar Lotofácil - Caixa"):
+        if st.button("Atualizar Lotofácil (arquivo local)"):
             try:
                 atualizar_base_lotofacil_automatico()
-                st.success("Base da Lotofácil baixada da Caixa e atualizada.")
+                st.success("Base da Lotofácil atualizada a partir do XLSX local.")
                 st.rerun()
             except Exception as e:
-                st.error(f"Erro ao baixar/atualizar Lotofácil: {e}")
+                st.error(f"Erro ao atualizar Lotofácil: {e}")
     else:
-        if st.button("Baixar e atualizar Mega-Sena - Caixa"):
+        if st.button("Atualizar Mega-Sena (arquivo local)"):
             try:
                 atualizar_base_megasena_automatico()
-                st.success("Base da Mega-Sena baixada da Caixa e atualizada.")
+                st.success("Base da Mega-Sena atualizada a partir do XLSX local.")
                 st.rerun()
             except Exception as e:
-                st.error(f"Erro ao baixar/atualizar Mega-Sena: {e}")
+                st.error(f"Erro ao atualizar Mega-Sena: {e}")
 
     st.markdown("### Manutenção das bases")
     if st.button("Apagar CSVs locais (reset histórico)"):
         _remover_arquivo_se_existir("historicomegasena.csv")
         _remover_arquivo_se_existir("historicolotofacil.csv")
-        st.success("Arquivos CSV locais removidos. Baixe e atualize novamente as bases.")
+        st.success("Arquivos CSV locais removidos. Atualize novamente as bases.")
         st.session_state.clear()
         st.rerun()
 
@@ -639,7 +593,7 @@ try:
 except FileNotFoundError:
     st.error(
         f"Arquivo de concursos não encontrado para {modalidade}. "
-        "Clique em 'Baixar e atualizar' na barra lateral primeiro."
+        "Clique em 'Atualizar ... (arquivo local)' na barra lateral primeiro."
     )
     st.stop()
 except Exception as e:
