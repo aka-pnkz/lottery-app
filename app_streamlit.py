@@ -193,6 +193,9 @@ def atualizar_base_lotofacil(buf_xlsx: BytesIO) -> None:
 def atualizar_base_megasena(buf_xlsx: BytesIO) -> None:
     df_raw = pd.read_excel(buf_xlsx)
 
+    # DEBUG 1: logo após ler o XLSX
+    st.write("Mega XLSX – linhas totais:", len(df_raw))
+
     cols = [
         "Concurso", "Data do Sorteio",
         "Bola1", "Bola2", "Bola3", "Bola4", "Bola5", "Bola6",
@@ -220,7 +223,11 @@ def atualizar_base_megasena(buf_xlsx: BytesIO) -> None:
     df[dezenas] = np.sort(df[dezenas].values, axis=1)
     df = df.sort_values("concurso")
 
-    df.to_csv("historicomegasena.csv", sep=";", index=False)  # [file:1]
+    # DEBUG 2: depois da limpeza e antes de salvar o CSV
+    st.write("Mega após limpeza – concursos únicos:", df["concurso"].nunique())
+    st.write("Mega após limpeza – maior concurso:", df["concurso"].max())
+
+    df.to_csv("historicomegasena.csv", sep=";", index=False)
 
 
 def _remover_arquivo_se_existir(path: str) -> None:
