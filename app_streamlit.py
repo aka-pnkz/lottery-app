@@ -1314,8 +1314,20 @@ elif pagina == "Debug Mega":
 
             # >>> AQUI entra o botão de sobrescrever <<<
             if st.button("Sobrescrever historicomegasena.csv com XLSX limpo"):
-                df.to_csv("historicomegasena.csv", sep=";", index=False)
-                st.success("historicomegasena.csv atualizado com 2951 concursos.")
+                # garante nomes que o app espera
+                df_to_save = df.rename(
+                    columns={
+                        "Bola1": "d1",
+                        "Bola2": "d2",
+                        "Bola3": "d3",
+                        "Bola4": "d4",
+                        "Bola5": "d5",
+                        "Bola6": "d6",
+                    }
+                )
+                df_to_save.to_csv("historicomegasena.csv", sep=";", index=False)
+                st.success("historicomegasena.csv atualizado com 2951 concursos e colunas d1..d6.")
+
 
     st.markdown("### 2. Ler CSV gerado pelo app")
     if os.path.exists("historicomegasena.csv"):
