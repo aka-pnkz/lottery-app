@@ -6,7 +6,6 @@ import numpy as np
 import pandas as pd
 import requests
 import streamlit as st
-import zipfile
 
 # ==========================
 # CONFIG GERAL
@@ -120,21 +119,17 @@ def calcular_frequencias(df: pd.DataFrame, n_dezenas: int) -> pd.DataFrame:
 
 
 def baixar_xlsx_lotofacil() -> BytesIO:
+    # Lotofácil: XLSX direto
     resp = requests.get(URL_LOTOFACIL_DOWNLOAD, timeout=30)
     resp.raise_for_status()
-    buf_zip = BytesIO(resp.content)
-    with zipfile.ZipFile(buf_zip) as z:
-        for name in z.namelist():
-            if name.lower().endswith((".xlsx", ".xls")):
-                return BytesIO(z.read(name))
-    raise RuntimeError("Nenhum arquivo XLS/XLSX encontrado no ZIP da Caixa para Lotofácil.")  # [file:1]
+    return BytesIO(resp.content)  # [web:21]
 
 
 def baixar_xlsx_megasena() -> BytesIO:
-    # Mega-Sena vem como XLSX direto, não ZIP [web:21]
+    # Mega-Sena: XLSX direto
     resp = requests.get(URL_MEGA_DOWNLOAD, timeout=30)
     resp.raise_for_status()
-    return BytesIO(resp.content)
+    return BytesIO(resp.content)  # [web:21]
 
 
 def atualizar_base_lotofacil(buf_xlsx: BytesIO) -> None:
