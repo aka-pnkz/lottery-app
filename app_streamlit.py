@@ -1,45 +1,30 @@
+# app.py
 import math
-import os
 import re
-import tempfile
 from datetime import datetime
 from io import BytesIO
-from pathlib import Path
+from typing import Literal
 
 import numpy as np
 import pandas as pd
 import requests
 import streamlit as st
 
+
 # ==========================
-# CONFIG GERAL
+# CONFIG
 # ==========================
 
-st.set_page_config(
-    page_title="Lottery Helper",
-    page_icon="🎰",
-    layout="wide",
-    initial_sidebar_state="expanded",
-)
+st.set_page_config(page_title="Lottery Helper", page_icon="🎰", layout="wide", initial_sidebar_state="expanded")
 
 
 def inject_global_css() -> None:
     st.markdown(
         """
         <style>
-        .stApp {
-            background-color: #0f172a0d;
-        }
-        .main-title {
-            font-size: 2.0rem;
-            font-weight: 700;
-            margin-bottom: 0.25rem;
-        }
-        .main-subtitle {
-            font-size: 0.9rem;
-            color: #6b7280;
-            margin-bottom: 0.75rem;
-        }
+        .stApp { background-color: #0f172a0d; }
+        .main-title { font-size: 2.0rem; font-weight: 700; margin-bottom: 0.25rem; }
+        .main-subtitle { font-size: 0.9rem; color: #6b7280; margin-bottom: 0.75rem; }
         div[data-testid="metric-container"] {
             background-color: #ffffff;
             padding: 0.75rem 0.9rem;
@@ -47,32 +32,16 @@ def inject_global_css() -> None:
             border: 1px solid #e5e7eb;
             box-shadow: 0 1px 3px rgba(15,23,42,0.08);
         }
-        div[data-testid="metric-container"] > label {
-            font-size: 0.8rem;
-            color: #6b7280;
-        }
-        .stTabs [data-baseweb="tab-list"] {
-            gap: 0.25rem;
-        }
+        div[data-testid="metric-container"] > label { font-size: 0.8rem; color: #6b7280; }
+        .stTabs [data-baseweb="tab-list"] { gap: 0.25rem; }
         .stTabs [data-baseweb="tab"] {
             padding: 0.3rem 0.9rem;
             border-radius: 999px;
             background-color: #e5e7eb33;
         }
-        .stTabs [aria-selected="true"] {
-            background-color: #111827;
-            color: #f9fafb;
-        }
-        .stDataFrame thead tr th {
-            font-size: 0.80rem;
-            padding-top: 0.4rem;
-            padding-bottom: 0.4rem;
-        }
-        .stDataFrame tbody tr td {
-            font-size: 0.80rem;
-            padding-top: 0.25rem;
-            padding-bottom: 0.25rem;
-        }
+        .stTabs [aria-selected="true"] { background-color: #111827; color: #f9fafb; }
+        .stDataFrame thead tr th { font-size: 0.80rem; padding-top: 0.4rem; padding-bottom: 0.4rem; }
+        .stDataFrame tbody tr td { font-size: 0.80rem; padding-top: 0.25rem; padding-bottom: 0.25rem; }
         </style>
         """,
         unsafe_allow_html=True,
@@ -81,11 +50,11 @@ def inject_global_css() -> None:
 
 inject_global_css()
 
-# Preços base (ajuste se necessário)
+# Preços base (ajuste se quiser)
 PRECO_BASE_MEGA = 6.00
 PRECO_BASE_LOTO = 3.50
 
-# Endpoints da Caixa (download histórico XLSX)
+# Endpoints de download do histórico (XLSX)
 URL_LOTOFACIL_DOWNLOAD = (
     "https://servicebus2.caixa.gov.br/portaldeloterias/api/resultados/download"
     "?modalidade=Lotof%C3%A1cil"
@@ -95,39 +64,19 @@ URL_MEGA_DOWNLOAD = (
     "?modalidade=Mega-Sena"
 )
 
+Modalidade = Literal["Mega-Sena", "Lotofácil"]
+
+
 # ==========================
 # UTILITÁRIOS
 # ==========================
 
-
-def _atomic_write_csv(df: pd.DataFrame, path: str, sep: str = ";") -> None:
-    """Escreve CSV de forma atômica para não corromper/perder o arquivo em caso de erro."""
-    p = Path(path)
-    p.parent.mkdir(parents=True, exist_ok=True)
-
-    with tempfile.NamedTemporaryFile(
-        "w",
-        delete=False,
-        dir=str(p.parent),
-        suffix=".tmp",
-        encoding="utf-8",
-        newline="",
-    ) as tmp:
-        tmp_path = tmp.name
-        df.to_csv(tmp_path, sep=sep, index=False)
-
-    Path(tmp_path).replace(p)
-
-
-def _remover_arquivo_se_existir(path: str) -> None:
-    if os.path.exists(path):
-        os.remove(path)
+def money_ptbr(v: float) -> str:
+    return f"R$ {v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
 
 def parse_lista(texto: str) -> list[int]:
-    """
-    Aceita: "1 2 3", "1,2,3", "1; 2;3" e remove duplicados preservando ordem.
-    """
+    """Aceita: '1 2 3', '1,2,3', '1; 2;3'. Remove duplicados preservando ordem."""
     if not texto:
         return []
     tokens = re.split(r"[,\s;]+", texto.strip())
@@ -145,198 +94,31 @@ def parse_lista(texto: str) -> list[int]:
 
 
 def validar_dezenas(lista: list[int], n_universo: int, nome: str) -> None:
-    if any((d < 1 or d > n_universo) for d in lista):
-        raise ValueError(f"{nome}: há dezenas fora do intervalo 1–{n_universo}.")
     if len(set(lista)) != len(lista):
         raise ValueError(f"{nome}: há dezenas repetidas.")
+    if any((d < 1 or d > n_universo) for d in lista):
+        raise ValueError(f"{nome}: há dezenas fora do intervalo 1–{n_universo}.")
 
 
-# ==========================
-# ETL / HISTÓRICO
-# ==========================
-
-
-@st.cache_data(show_spinner=False)
-def carregar_concursos(caminho_csv: str, n_dezenas_sorteio: int) -> pd.DataFrame:
-    cols = ["concurso", "data"] + [f"d{i}" for i in range(1, n_dezenas_sorteio + 1)]
-    df = pd.read_csv(caminho_csv, sep=";")
-
-    faltando = [c for c in cols if c not in df.columns]
-    if faltando:
-        raise RuntimeError(f"CSV inválido: colunas ausentes: {faltando}")
-
-    df = df[cols].copy()
-    df["concurso"] = pd.to_numeric(df["concurso"], errors="coerce")
-    df["data"] = pd.to_datetime(df["data"], dayfirst=True, errors="coerce")
-    df = df.dropna(subset=["concurso", "data"])
-
-    hoje = pd.Timestamp.today().normalize()
-    df = df[(df["data"] >= "1996-01-01") & (df["data"] <= hoje)]
-    df["concurso"] = df["concurso"].astype(int)
-
-    dezenas_cols = [f"d{i}" for i in range(1, n_dezenas_sorteio + 1)]
-    for c in dezenas_cols:
-        df[c] = pd.to_numeric(df[c], errors="coerce")
-    df = df.dropna(subset=dezenas_cols)
-    for c in dezenas_cols:
-        df[c] = df[c].astype(int)
-
-    # Remove concursos duplicados (mantém o último)
-    df = df.sort_values(["concurso", "data"]).drop_duplicates(subset=["concurso"], keep="last")
-    df = df.sort_values("concurso").reset_index(drop=True)
-    return df
-
-
-@st.cache_data(show_spinner=False)
-def calcular_frequencias(
-    df: pd.DataFrame, n_dezenas_sorteio: int, n_universo: int
-) -> pd.DataFrame:
-    dezenas_cols = [f"d{i}" for i in range(1, n_dezenas_sorteio + 1)]
-    todas = df[dezenas_cols].values.ravel()
-
-    freq = pd.Series(todas).value_counts().sort_index()
-    # Garante 1..n_universo (inclui dezenas com frequência 0)
-    freq = freq.reindex(range(1, n_universo + 1), fill_value=0)
-
-    freq_df = freq.reset_index()
-    freq_df.columns = ["dezena", "frequencia"]
-    freq_df["dezena"] = freq_df["dezena"].astype(int)
-    freq_df["frequencia"] = freq_df["frequencia"].astype(int)
-    return freq_df
-
-
-def baixar_xlsx_lotofacil() -> BytesIO:
-    resp = requests.get(URL_LOTOFACIL_DOWNLOAD, timeout=60)
-    resp.raise_for_status()
-    return BytesIO(resp.content)
-
-
-def baixar_xlsx_megasena() -> BytesIO:
-    resp = requests.get(URL_MEGA_DOWNLOAD, timeout=60)
-    resp.raise_for_status()
-    return BytesIO(resp.content)
-
-
-def _limpar_concurso_data(df: pd.DataFrame) -> pd.DataFrame:
-    df["concurso"] = pd.to_numeric(df["concurso"], errors="coerce")
-    df["data"] = pd.to_datetime(df["data"], dayfirst=True, errors="coerce")
-    df = df.dropna(subset=["concurso", "data"])
-    hoje = pd.Timestamp.today().normalize()
-    df = df[(df["data"] >= "1996-01-01") & (df["data"] <= hoje)]
-    df["concurso"] = df["concurso"].astype(int)
-    return df
-
-
-def atualizar_base_lotofacil(buf_xlsx: BytesIO) -> None:
-    df_raw = pd.read_excel(buf_xlsx)
-    cols = [
-        "Concurso",
-        "Data Sorteio",
-        "Bola1", "Bola2", "Bola3", "Bola4", "Bola5",
-        "Bola6", "Bola7", "Bola8", "Bola9", "Bola10",
-        "Bola11", "Bola12", "Bola13", "Bola14", "Bola15",
-    ]
-    for c in cols:
-        if c not in df_raw.columns:
-            raise RuntimeError(f"Coluna ausente na Lotofácil: {c}")
-
-    df = df_raw[cols].copy()
-    rename = {"Concurso": "concurso", "Data Sorteio": "data"}
-    for i in range(1, 16):
-        rename[f"Bola{i}"] = f"d{i}"
-    df.rename(columns=rename, inplace=True)
-
-    df = _limpar_concurso_data(df)
-
-    dezenas = [f"d{i}" for i in range(1, 16)]
-    for c in dezenas:
-        df[c] = pd.to_numeric(df[c], errors="coerce")
-    df = df.dropna(subset=dezenas)
-    for c in dezenas:
-        df[c] = df[c].astype(int)
-
-    # Validação de faixa Lotofácil
-    for c in dezenas:
-        df = df[df[c].between(1, 25)]
-
-    df[dezenas] = np.sort(df[dezenas].values, axis=1)
-    df = df.sort_values(["concurso", "data"]).drop_duplicates(subset=["concurso"], keep="last")
-    df = df.sort_values("concurso").reset_index(drop=True)
-
-    _atomic_write_csv(df, "historicolotofacil.csv", sep=";")
-
-
-def atualizar_base_megasena(buf_xlsx: BytesIO) -> None:
-    df_raw = pd.read_excel(buf_xlsx)
-    cols = [
-        "Concurso",
-        "Data do Sorteio",
-        "Bola1", "Bola2", "Bola3", "Bola4", "Bola5", "Bola6",
-    ]
-    for c in cols:
-        if c not in df_raw.columns:
-            raise RuntimeError(f"Coluna ausente na Mega-Sena: {c}")
-
-    df = df_raw[cols].copy()
-    rename = {"Concurso": "concurso", "Data do Sorteio": "data"}
-    for i in range(1, 7):
-        rename[f"Bola{i}"] = f"d{i}"
-    df.rename(columns=rename, inplace=True)
-
-    df = _limpar_concurso_data(df)
-
-    dezenas = [f"d{i}" for i in range(1, 7)]
-    for c in dezenas:
-        df[c] = pd.to_numeric(df[c], errors="coerce")
-    df = df.dropna(subset=dezenas)
-    for c in dezenas:
-        df[c] = df[c].astype(int)
-
-    # Validação de faixa Mega
-    for c in dezenas:
-        df = df[df[c].between(1, 60)]
-
-    df[dezenas] = np.sort(df[dezenas].values, axis=1)
-    df = df.sort_values(["concurso", "data"]).drop_duplicates(subset=["concurso"], keep="last")
-    df = df.sort_values("concurso").reset_index(drop=True)
-
-    _atomic_write_csv(df, "historicomegasena.csv", sep=";")
-
-
-def atualizar_base_lotofacil_automatico() -> None:
-    # Não apaga o CSV antes (se o download falhar, você não perde a base antiga)
-    buf = baixar_xlsx_lotofacil()
-    atualizar_base_lotofacil(buf)
-
-
-def atualizar_base_megasena_automatico() -> None:
-    # Não apaga o CSV antes (se o download falhar, você não perde a base antiga)
-    buf = baixar_xlsx_megasena()
-    atualizar_base_megasena(buf)
-
-
-# ==========================
-# FUNÇÕES DE JOGOS / ANÁLISE
-# ==========================
+def formatar_jogo(jogo: list[int]) -> str:
+    return " - ".join(f"{d:02d}" for d in sorted(jogo))
 
 
 def pares_impares(jogo: list[int]) -> tuple[int, int]:
     pares = sum(1 for d in jogo if d % 2 == 0)
-    impares = len(jogo) - pares
-    return pares, impares
+    return pares, len(jogo) - pares
 
 
 def baixos_altos(jogo: list[int], limite_baixo: int) -> tuple[int, int]:
     baixos = sum(1 for d in jogo if 1 <= d <= limite_baixo)
-    altos = len(jogo) - baixos
-    return baixos, altos
+    return baixos, len(jogo) - baixos
 
 
 def tem_sequencia_longa(jogo: list[int], limite: int = 3) -> bool:
-    jogo_ord = sorted(jogo)
+    j = sorted(jogo)
     atual = 1
-    for i in range(1, len(jogo_ord)):
-        if jogo_ord[i] == jogo_ord[i - 1] + 1:
+    for i in range(1, len(j)):
+        if j[i] == j[i - 1] + 1:
             atual += 1
             if atual >= limite:
                 return True
@@ -345,298 +127,341 @@ def tem_sequencia_longa(jogo: list[int], limite: int = 3) -> bool:
     return False
 
 
-PRIMOS_ATE_60 = {
-    2, 3, 5, 7, 11, 13, 17, 19,
-    23, 29, 31, 37, 41, 43, 47, 53, 59,
-}
+PRIMOS_ATE_60 = {2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53, 59}
 
 
 def contar_primos(jogo: list[int]) -> int:
     return sum(1 for d in jogo if d in PRIMOS_ATE_60)
 
 
-def formatar_jogo(jogo: list[int]) -> str:
-    return " - ".join(f"{d:02d}" for d in jogo)
+# ==========================
+# HISTÓRICO (IN-MEMORY)
+# ==========================
+
+def baixar_xlsx(url: str) -> BytesIO:
+    r = requests.get(url, timeout=60)
+    r.raise_for_status()
+    return BytesIO(r.content)
 
 
-def gerar_aleatorio_puro(qtd_jogos: int, tam_jogo: int, n_universo: int) -> list[list[int]]:
+def _limpar_concurso_data(df: pd.DataFrame) -> pd.DataFrame:
+    df = df.copy()
+    df["concurso"] = pd.to_numeric(df["concurso"], errors="coerce")
+    df["data"] = pd.to_datetime(df["data"], dayfirst=True, errors="coerce")
+    df = df.dropna(subset=["concurso", "data"])
+
+    hoje = pd.Timestamp.today().normalize()
+    df = df[(df["data"] >= "1996-01-01") & (df["data"] <= hoje)]
+    df["concurso"] = df["concurso"].astype(int)
+
+    # Remove duplicados de concurso (mantém último por data)
+    df = df.sort_values(["concurso", "data"]).drop_duplicates(subset=["concurso"], keep="last")
+    df = df.sort_values("concurso").reset_index(drop=True)
+    return df
+
+
+def normalizar_df_megasena(df_raw: pd.DataFrame) -> pd.DataFrame:
+    cols = ["Concurso", "Data do Sorteio", "Bola1", "Bola2", "Bola3", "Bola4", "Bola5", "Bola6"]
+    faltando = [c for c in cols if c not in df_raw.columns]
+    if faltando:
+        raise RuntimeError(f"XLSX Mega-Sena inválido; colunas ausentes: {faltando}")
+
+    df = df_raw[cols].copy()
+    df.rename(columns={"Concurso": "concurso", "Data do Sorteio": "data"}, inplace=True)
+    df = _limpar_concurso_data(df)
+
+    bolas = [f"Bola{i}" for i in range(1, 7)]
+    for c in bolas:
+        df[c] = pd.to_numeric(df[c], errors="coerce")
+    df = df.dropna(subset=bolas)
+    for c in bolas:
+        df[c] = df[c].astype(int)
+        df = df[df[c].between(1, 60)]
+
+    df.rename(columns={f"Bola{i}": f"d{i}" for i in range(1, 7)}, inplace=True)
+    dezenas = [f"d{i}" for i in range(1, 7)]
+    df[dezenas] = np.sort(df[dezenas].values, axis=1)
+    df = df[["concurso", "data"] + dezenas].sort_values("concurso").reset_index(drop=True)
+    return df
+
+
+def normalizar_df_lotofacil(df_raw: pd.DataFrame) -> pd.DataFrame:
+    cols = ["Concurso", "Data Sorteio"] + [f"Bola{i}" for i in range(1, 16)]
+    faltando = [c for c in cols if c not in df_raw.columns]
+    if faltando:
+        raise RuntimeError(f"XLSX Lotofácil inválido; colunas ausentes: {faltando}")
+
+    df = df_raw[cols].copy()
+    df.rename(columns={"Concurso": "concurso", "Data Sorteio": "data"}, inplace=True)
+    df = _limpar_concurso_data(df)
+
+    bolas = [f"Bola{i}" for i in range(1, 16)]
+    for c in bolas:
+        df[c] = pd.to_numeric(df[c], errors="coerce")
+    df = df.dropna(subset=bolas)
+    for c in bolas:
+        df[c] = df[c].astype(int)
+        df = df[df[c].between(1, 25)]
+
+    df.rename(columns={f"Bola{i}": f"d{i}" for i in range(1, 16)}, inplace=True)
+    dezenas = [f"d{i}" for i in range(1, 16)]
+    df[dezenas] = np.sort(df[dezenas].values, axis=1)
+    df = df[["concurso", "data"] + dezenas].sort_values("concurso").reset_index(drop=True)
+    return df
+
+
+def carregar_historico_inmemory(modalidade: Modalidade) -> pd.DataFrame:
+    """
+    Histórico por sessão: guarda em st.session_state para reaproveitar entre reruns na mesma sessão.
+    """
+    key = f"historico_df::{modalidade}"
+    if key in st.session_state:
+        return st.session_state[key]
+
+    if modalidade == "Mega-Sena":
+        buf = baixar_xlsx(URL_MEGA_DOWNLOAD)
+        df_raw = pd.read_excel(buf)
+        df = normalizar_df_megasena(df_raw)
+    else:
+        buf = baixar_xlsx(URL_LOTOFACIL_DOWNLOAD)
+        df_raw = pd.read_excel(buf)
+        df = normalizar_df_lotofacil(df_raw)
+
+    st.session_state[key] = df
+    return df
+
+
+def limpar_historico_sessao(modalidade: Modalidade) -> None:
+    key = f"historico_df::{modalidade}"
+    if key in st.session_state:
+        del st.session_state[key]
+
+
+# ==========================
+# GERAÇÃO DE JOGOS
+# ==========================
+
+def gerar_aleatorio_puro(qtd: int, tam: int, n_universo: int) -> list[list[int]]:
     universe = np.arange(1, n_universo + 1)
     jogos: list[list[int]] = []
-    for _ in range(qtd_jogos):
-        dezenas = np.random.choice(universe, size=tam_jogo, replace=False)
+    for _ in range(qtd):
+        dezenas = np.random.choice(universe, size=tam, replace=False)
         jogos.append(sorted(dezenas.tolist()))
     return jogos
 
 
-def gerar_balanceado_par_impar(qtd_jogos: int, tam_jogo: int, n_universo: int) -> list[list[int]]:
+def gerar_balanceado_par_impar(qtd: int, tam: int, n_universo: int) -> list[list[int]]:
     universe = np.arange(1, n_universo + 1)
     jogos: list[list[int]] = []
-    for _ in range(qtd_jogos):
-        tentativas = 0
+    for _ in range(qtd):
+        tent = 0
         while True:
-            tentativas += 1
-            dezenas = np.random.choice(universe, size=tam_jogo, replace=False)
-            pares, impares = pares_impares(dezenas.tolist())
-
-            if pares not in (0, tam_jogo) and impares not in (0, tam_jogo):
-                jogos.append(sorted(dezenas.tolist()))
+            tent += 1
+            dezenas = np.random.choice(universe, size=tam, replace=False).tolist()
+            p, i = pares_impares(dezenas)
+            if p not in (0, tam) and i not in (0, tam):
+                jogos.append(sorted(dezenas))
                 break
-
-            if tentativas > 50:
-                jogos.append(sorted(dezenas.tolist()))
+            if tent > 50:
+                jogos.append(sorted(dezenas))
                 break
     return jogos
 
 
 def gerar_quentes_frias_mix(
-    qtd_jogos: int,
-    tam_jogo: int,
+    qtd: int,
+    tam: int,
     freq_df: pd.DataFrame,
     n_universo: int,
-    proporcao: tuple[int, int, int] = (5, 5, 5),
+    proporcao: tuple[int, int, int],
 ) -> list[list[int]]:
-    total_quentes, total_frias, total_neutras = proporcao
+    q_quentes, q_frias, q_neutras = proporcao
 
     freq_ord = freq_df.sort_values("frequencia", ascending=False)
     quentes = freq_ord["dezena"].values[:10]
 
     frias_raw = freq_df.sort_values("frequencia", ascending=True)["dezena"].values[:10]
-    # Evita sobreposição quente/fria
-    frias = np.setdiff1d(frias_raw, quentes)
+    frias = np.setdiff1d(frias_raw, quentes)  # evita sobreposição
 
     neutras = np.setdiff1d(np.arange(1, n_universo + 1), np.union1d(quentes, frias))
 
     jogos: list[list[int]] = []
-    for _ in range(qtd_jogos):
-        q_quentes = min(total_quentes, tam_jogo)
-        q_frias = min(total_frias, max(0, tam_jogo - q_quentes))
-        q_neutras = min(total_neutras, max(0, tam_jogo - q_quentes - q_frias))
-
+    for _ in range(qtd):
         dezenas: list[int] = []
 
-        if len(quentes) > 0 and q_quentes > 0:
-            dezenas.extend(np.random.choice(quentes, size=min(q_quentes, len(quentes)), replace=False))
-        if len(frias) > 0 and q_frias > 0:
-            dezenas.extend(np.random.choice(frias, size=min(q_frias, len(frias)), replace=False))
-        if len(neutras) > 0 and q_neutras > 0:
-            dezenas.extend(np.random.choice(neutras, size=min(q_neutras, len(neutras)), replace=False))
+        qq = min(q_quentes, tam)
+        qf = min(q_frias, max(0, tam - qq))
+        qn = min(q_neutras, max(0, tam - qq - qf))
 
-        # Completa com resto do universo, evitando duplicados
-        if len(dezenas) < tam_jogo:
-            universe_rest = np.setdiff1d(np.arange(1, n_universo + 1), np.array(dezenas, dtype=int))
-            extra = np.random.choice(universe_rest, size=tam_jogo - len(dezenas), replace=False)
-            dezenas = list(map(int, np.concatenate([np.array(dezenas, dtype=int), extra])))
+        if qq > 0 and len(quentes) > 0:
+            dezenas.extend(np.random.choice(quentes, size=min(qq, len(quentes)), replace=False).tolist())
+        if qf > 0 and len(frias) > 0:
+            dezenas.extend(np.random.choice(frias, size=min(qf, len(frias)), replace=False).tolist())
+        if qn > 0 and len(neutras) > 0:
+            dezenas.extend(np.random.choice(neutras, size=min(qn, len(neutras)), replace=False).tolist())
 
-        jogos.append(sorted(dezenas))
+        if len(dezenas) < tam:
+            rest = np.setdiff1d(np.arange(1, n_universo + 1), np.array(dezenas, dtype=int))
+            extra = np.random.choice(rest, size=tam - len(dezenas), replace=False).tolist()
+            dezenas.extend(extra)
+
+        jogos.append(sorted(list(map(int, dezenas))))
     return jogos
 
 
-def gerar_sem_sequencias(
-    qtd_jogos: int, tam_jogo: int, n_universo: int, limite_sequencia: int = 3
-) -> list[list[int]]:
+def gerar_sem_sequencias(qtd: int, tam: int, n_universo: int, limite: int) -> list[list[int]]:
     universe = np.arange(1, n_universo + 1)
     jogos: list[list[int]] = []
-    for _ in range(qtd_jogos):
-        tentativas = 0
+    for _ in range(qtd):
+        tent = 0
         while True:
-            tentativas += 1
-            dezenas = np.random.choice(universe, size=tam_jogo, replace=False)
-            if not tem_sequencia_longa(dezenas.tolist(), limite=limite_sequencia):
-                jogos.append(sorted(dezenas.tolist()))
+            tent += 1
+            dezenas = np.random.choice(universe, size=tam, replace=False).tolist()
+            if not tem_sequencia_longa(dezenas, limite=limite):
+                jogos.append(sorted(dezenas))
                 break
-            if tentativas > 100:
-                jogos.append(sorted(dezenas.tolist()))
+            if tent > 100:
+                jogos.append(sorted(dezenas))
                 break
     return jogos
+
+
+def filtrar_jogo(
+    jogo: list[int],
+    dezenas_fixas: list[int],
+    dezenas_proibidas: list[int],
+    soma_min: int | None,
+    soma_max: int | None,
+) -> bool:
+    s = set(jogo)
+    if dezenas_fixas and not set(dezenas_fixas).issubset(s):
+        return False
+    if dezenas_proibidas and (set(dezenas_proibidas) & s):
+        return False
+    soma = sum(jogo)
+    if soma_min is not None and soma < soma_min:
+        return False
+    if soma_max is not None and soma > soma_max:
+        return False
+    return True
 
 
 def preco_aposta_loteria(n_dezenas: int, n_min_base: int, preco_base: float) -> float:
     if n_dezenas < n_min_base:
-        raise ValueError("Número de dezenas menor que o mínimo permitido.")
-    comb = math.comb(n_dezenas, n_min_base)
-    return comb * preco_base
+        return 0.0
+    return math.comb(n_dezenas, n_min_base) * preco_base
 
 
 def calcular_custo_total(jogos: list[list[int]], n_min_base: int, preco_base: float) -> float:
-    total = 0.0
-    for jogo in jogos:
-        n = len(jogo)
-        if n < n_min_base:
-            continue
-        total += preco_aposta_loteria(n, n_min_base, preco_base)
-    return total
+    return sum(preco_aposta_loteria(len(j), n_min_base, preco_base) for j in jogos)
 
 
 def prob_premio_maximo_pacote(jogos: list[list[int]], n_min_base: int, comb_target: int) -> float:
     """
-    Aproximação: assume independência entre jogos (não é estritamente verdade quando há sobreposição).
+    Aproximação (assume independência entre jogos). Útil como noção de ordem de grandeza.
     """
-    probs = []
-    for jogo in jogos:
-        n = len(jogo)
-        if n < n_min_base:
-            continue
-        comb_jogo = math.comb(n, n_min_base)
-        p = comb_jogo / comb_target
-        probs.append(p)
-
     prob_nao = 1.0
-    for p in probs:
+    for jogo in jogos:
+        if len(jogo) < n_min_base:
+            continue
+        p = math.comb(len(jogo), n_min_base) / comb_target
         prob_nao *= (1.0 - p)
     return 1.0 - prob_nao
 
 
-def filtrar_jogos(
-    jogos: list[list[int]],
-    dezenas_fixas: list[int] | None = None,
-    dezenas_proibidas: list[int] | None = None,
-    soma_min: int | None = None,
-    soma_max: int | None = None,
-) -> list[list[int]]:
-    dezenas_fixas_set = set(dezenas_fixas or [])
-    dezenas_proibidas_set = set(dezenas_proibidas or [])
-    filtrados: list[list[int]] = []
+# ==========================
+# ANÁLISES (HISTÓRICO)
+# ==========================
 
-    for jogo in jogos:
-        s = set(jogo)
-
-        if dezenas_fixas_set and not dezenas_fixas_set.issubset(s):
-            continue
-        if dezenas_proibidas_set and (dezenas_proibidas_set & s):
-            continue
-
-        soma = sum(jogo)
-        if soma_min is not None and soma < soma_min:
-            continue
-        if soma_max is not None and soma > soma_max:
-            continue
-
-        filtrados.append(jogo)
-
-    return filtrados
+def calcular_frequencias(df: pd.DataFrame, n_dezenas_sorteio: int, n_universo: int) -> pd.DataFrame:
+    dezenas_cols = [f"d{i}" for i in range(1, n_dezenas_sorteio + 1)]
+    todas = df[dezenas_cols].values.ravel()
+    freq = pd.Series(todas).value_counts().reindex(range(1, n_universo + 1), fill_value=0).sort_index()
+    out = freq.reset_index()
+    out.columns = ["dezena", "frequencia"]
+    out["dezena"] = out["dezena"].astype(int)
+    out["frequencia"] = out["frequencia"].astype(int)
+    return out
 
 
-def simular_premios(jogos: list[list[int]], dezenas_sorteadas: list[int]) -> pd.DataFrame:
-    dezenas_s = set(dezenas_sorteadas)
+def calcular_atraso(freq_df: pd.DataFrame, df: pd.DataFrame, n_dezenas_sorteio: int, n_universo: int) -> pd.DataFrame:
+    dezenas_cols = [f"d{i}" for i in range(1, n_dezenas_sorteio + 1)]
+    ultimo: dict[int, int] = {}
+
+    for _, row in df[["concurso"] + dezenas_cols].iterrows():
+        conc = int(row["concurso"])
+        for d in row[dezenas_cols]:
+            ultimo[int(d)] = conc
+
+    max_conc = int(df["concurso"].max())
     linhas = []
-    for i, jogo in enumerate(jogos, start=1):
-        acertos = len(set(jogo) & dezenas_s)
-        linhas.append({"jogo_id": i, "jogo": formatar_jogo(jogo), "acertos": acertos})
+    for dezena in range(1, n_universo + 1):
+        fr = int(freq_df.loc[freq_df["dezena"] == dezena, "frequencia"].iloc[0])
+        ult = ultimo.get(dezena)
+        atraso = None if ult is None else max_conc - ult
+        linhas.append({"dezena": dezena, "frequencia": fr, "ultimo_concurso": ult, "atraso_atual": atraso})
     return pd.DataFrame(linhas)
 
 
-def calcular_atraso(
-    freq_df: pd.DataFrame,
-    df_concursos: pd.DataFrame,
-    n_dezenas_sorteio: int,
-    n_universo: int,
-) -> pd.DataFrame:
-    dezenas_cols = [f"d{i}" for i in range(1, n_dezenas_sorteio + 1)]
-    ultimo_concurso: dict[int, int] = {}
-
-    for _, row in df_concursos[["concurso"] + dezenas_cols].iterrows():
-        conc = int(row["concurso"])
-        for d in row[dezenas_cols]:
-            ultimo_concurso[int(d)] = conc
-
-    max_concurso = int(df_concursos["concurso"].max())
-    atraso_list = []
-    for dezena in range(1, n_universo + 1):
-        freq_row = freq_df.loc[freq_df["dezena"] == dezena]
-        freq = int(freq_row["frequencia"].iloc[0]) if not freq_row.empty else 0
-        ult = ultimo_concurso.get(dezena, None)
-        atraso = None if ult is None else max_concurso - ult
-        atraso_list.append(
-            {
-                "dezena": dezena,
-                "frequencia": freq,
-                "ultimo_concurso": ult,
-                "atraso_atual": atraso,
-            }
-        )
-
-    return pd.DataFrame(atraso_list)
-
-
 def calcular_padroes_par_impar_baixa_alta(
-    df_concursos: pd.DataFrame,
-    n_dezenas_sorteio: int,
-    limite_baixo: int,
+    df: pd.DataFrame, n_dezenas_sorteio: int, limite_baixo: int
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     dezenas_cols = [f"d{i}" for i in range(1, n_dezenas_sorteio + 1)]
     registros = []
-
-    for _, row in df_concursos[["concurso"] + dezenas_cols].iterrows():
+    for _, row in df[["concurso"] + dezenas_cols].iterrows():
         dezenas = [int(row[c]) for c in dezenas_cols]
         pares = sum(1 for d in dezenas if d % 2 == 0)
         impares = len(dezenas) - pares
         baixos, altos = baixos_altos(dezenas, limite_baixo)
-        registros.append(
-            {
-                "concurso": int(row["concurso"]),
-                "pares": pares,
-                "impares": impares,
-                "baixos": baixos,
-                "altos": altos,
-            }
-        )
+        registros.append({"concurso": int(row["concurso"]), "pares": pares, "impares": impares, "baixos": baixos, "altos": altos})
 
-    df_padroes = pd.DataFrame(registros)
-    dist_par_impar = (
-        df_padroes.groupby(["pares", "impares"])
-        .size()
-        .reset_index(name="qtd")
-        .sort_values("qtd", ascending=False)
-        .reset_index(drop=True)
-    )
-    dist_baixa_alta = (
-        df_padroes.groupby(["baixos", "altos"])
-        .size()
-        .reset_index(name="qtd")
-        .sort_values("qtd", ascending=False)
-        .reset_index(drop=True)
-    )
-    return df_padroes, dist_par_impar, dist_baixa_alta
+    dfp = pd.DataFrame(registros)
+    dist_pi = dfp.groupby(["pares", "impares"]).size().reset_index(name="qtd").sort_values("qtd", ascending=False).reset_index(drop=True)
+    dist_ba = dfp.groupby(["baixos", "altos"]).size().reset_index(name="qtd").sort_values("qtd", ascending=False).reset_index(drop=True)
+    return dfp, dist_pi, dist_ba
 
 
-def calcular_somas(df_concursos: pd.DataFrame, n_dezenas_sorteio: int) -> tuple[pd.DataFrame, pd.DataFrame]:
+def calcular_somas(df: pd.DataFrame, n_dezenas_sorteio: int) -> tuple[pd.DataFrame, pd.DataFrame]:
     dezenas_cols = [f"d{i}" for i in range(1, n_dezenas_sorteio + 1)]
-    df = df_concursos.copy()
-    df["soma"] = df[dezenas_cols].sum(axis=1)
+    dfx = df.copy()
+    dfx["soma"] = dfx[dezenas_cols].sum(axis=1)
 
     bins = [0, 150, 200, 250, 300, 350, 500]
     labels = ["0-150", "151-200", "201-250", "251-300", "301-350", "351-500"]
-    df["faixa_soma"] = pd.cut(df["soma"], bins=bins, labels=labels, right=True)
+    dfx["faixa_soma"] = pd.cut(dfx["soma"], bins=bins, labels=labels, right=True)
 
-    dist_faixas = (
-        df["faixa_soma"]
+    dist = (
+        dfx["faixa_soma"]
         .value_counts(dropna=False)
         .sort_index()
         .reset_index()
         .rename(columns={"index": "faixa_soma", "faixa_soma": "qtd"})
     )
-    return df[["concurso", "soma", "faixa_soma"]], dist_faixas
+    return dfx[["concurso", "soma", "faixa_soma"]], dist
+
+
+def simular_acertos(jogos: list[list[int]], dezenas_sorteadas: list[int]) -> pd.DataFrame:
+    s = set(dezenas_sorteadas)
+    linhas = []
+    for i, jogo in enumerate(jogos, start=1):
+        linhas.append({"jogo_id": i, "jogo": formatar_jogo(jogo), "acertos": len(set(jogo) & s)})
+    return pd.DataFrame(linhas)
 
 
 # ==========================
-# SIDEBAR
+# SIDEBAR (CONTROLES)
 # ==========================
 
 with st.sidebar:
     st.title("Lottery Helper")
 
-    modalidade = st.radio(
-        "Loteria",
-        ["Mega-Sena", "Lotofácil"],
-        help="Escolha qual loteria deseja gerar e analisar.",
-    )
+    modalidade: Modalidade = st.radio("Loteria", ["Mega-Sena", "Lotofácil"])
 
     if modalidade == "Mega-Sena":
         N_UNIVERSO = 60
         N_MIN = 6
         N_MAX = 15
         N_DEZENAS_HIST = 6
-        CSVPATH = "historicomegasena.csv"
         preco_base = PRECO_BASE_MEGA
         COMB_TARGET = math.comb(60, 6)
         LIMITE_BAIXO = 30
@@ -645,104 +470,85 @@ with st.sidebar:
         N_MIN = 15
         N_MAX = 20
         N_DEZENAS_HIST = 15
-        CSVPATH = "historicolotofacil.csv"
         preco_base = PRECO_BASE_LOTO
         COMB_TARGET = math.comb(25, 15)
         LIMITE_BAIXO = 13
 
-    pagina = st.radio("Navegação", ["Gerar jogos", "Análises estatísticas", "Debug Mega"])
+    pagina = st.radio("Navegação", ["Gerar jogos", "Análises estatísticas"])
 
-    if st.button("Limpar cache (debug)"):
-        st.cache_data.clear()
-        st.rerun()
+    st.markdown("### Histórico (in-memory)")
+    colb1, colb2 = st.columns(2)
+    with colb1:
+        if st.button("Baixar/Recarregar"):
+            limpar_historico_sessao(modalidade)
+            st.rerun()
+    with colb2:
+        if st.button("Limpar sessão"):
+            limpar_historico_sessao(modalidade)
+            # também limpa jogos gerados
+            st.session_state.pop("jogos", None)
+            st.session_state.pop("jogos_info", None)
+            st.rerun()
 
-    st.markdown("### Filtros avançados (opcional)")
+    st.markdown("### Filtros (opcional)")
     with st.expander("Restrições sobre os jogos gerados", expanded=False):
         dezenas_fixas_txt = st.text_input("Dezenas fixas (sempre incluir)", placeholder="Ex: 10, 11, 12")
         dezenas_proibidas_txt = st.text_input("Dezenas proibidas (nunca incluir)", placeholder="Ex: 1, 2, 3")
-        soma_min = st.number_input("Soma mínima (opcional)", min_value=0, max_value=600, value=0)
-        soma_max = st.number_input("Soma máxima (opcional)", min_value=0, max_value=600, value=0)
+        soma_min = st.number_input("Soma mínima", min_value=0, max_value=1000, value=0, step=1)
+        soma_max = st.number_input("Soma máxima", min_value=0, max_value=1000, value=0, step=1)
 
     dezenas_fixas = parse_lista(dezenas_fixas_txt)
     dezenas_proibidas = parse_lista(dezenas_proibidas_txt)
-
     soma_min_val = soma_min if soma_min > 0 else None
     soma_max_val = soma_max if soma_max > 0 else None
 
-    if soma_min_val is not None and soma_max_val is not None and soma_min_val > soma_max_val:
-        st.warning("A soma mínima é maior que a soma máxima. Filtros de soma serão ignorados.")
-        soma_min_val, soma_max_val = None, None
+    orcamento_max = st.number_input("Orçamento máximo (opcional)", min_value=0.0, max_value=1_000_000.0, value=0.0, step=10.0)
 
+    # validações de filtros
     try:
         validar_dezenas(dezenas_fixas, N_UNIVERSO, "Dezenas fixas")
         validar_dezenas(dezenas_proibidas, N_UNIVERSO, "Dezenas proibidas")
         conflito = set(dezenas_fixas) & set(dezenas_proibidas)
         if conflito:
             raise ValueError(f"Conflito: {sorted(conflito)} está em fixas e proibidas.")
-        if len(dezenas_fixas) > N_MAX:
-            raise ValueError(f"Dezenas fixas: não pode ter mais que {N_MAX} dezenas.")
+        if soma_min_val is not None and soma_max_val is not None and soma_min_val > soma_max_val:
+            st.warning("Soma mínima > soma máxima. Filtros de soma serão ignorados.")
+            soma_min_val, soma_max_val = None, None
     except ValueError as e:
         st.error(str(e))
         st.stop()
 
-    st.markdown("### Atualização automática (Caixa)")
-    if modalidade == "Lotofácil":
-        if st.button("Baixar e atualizar Lotofácil - Caixa"):
-            try:
-                atualizar_base_lotofacil_automatico()
-                st.success("Base da Lotofácil baixada da Caixa e atualizada.")
-                st.cache_data.clear()
-                st.rerun()
-            except Exception as e:
-                st.error(f"Erro ao baixar/atualizar Lotofácil: {e}")
-    else:
-        if st.button("Baixar e atualizar Mega-Sena - Caixa"):
-            try:
-                atualizar_base_megasena_automatico()
-                st.success("Base da Mega-Sena baixada da Caixa e atualizada.")
-                st.cache_data.clear()
-                st.rerun()
-            except Exception as e:
-                st.error(f"Erro ao baixar/atualizar Mega-Sena: {e}")
-
-    st.markdown("### Manutenção das bases")
-    if st.button("Apagar CSVs locais (reset histórico)"):
-        _remover_arquivo_se_existir("historicomegasena.csv")
-        _remover_arquivo_se_existir("historicolotofacil.csv")
-        st.success("Arquivos CSV locais removidos. Baixe e atualize novamente as bases.")
-        st.session_state.clear()
-        st.cache_data.clear()
-        st.rerun()
-
-    orcamento_max = st.number_input(
-        "Orçamento máximo (opcional)",
-        min_value=0.0,
-        max_value=1_000_000.0,
-        value=0.0,
-        step=10.0,
-    )
 
 # ==========================
-# CARREGAR HISTÓRICO
+# CARREGAR HISTÓRICO (IN-MEMORY)
 # ==========================
 
-try:
-    df_concursos = carregar_concursos(CSVPATH, N_DEZENAS_HIST)
-    freq_df = calcular_frequencias(df_concursos, N_DEZENAS_HIST, N_UNIVERSO)
-except FileNotFoundError:
-    st.error(
-        f"Arquivo de concursos não encontrado para {modalidade}. "
-        "Clique em 'Baixar e atualizar ... - Caixa' na barra lateral primeiro."
-    )
-    st.stop()
-except Exception as e:
-    st.error(f"Ocorreu um erro ao carregar/usar os dados: {e}")
-    st.stop()
+with st.spinner("Carregando histórico..."):
+    try:
+        df_concursos = carregar_historico_inmemory(modalidade)
+    except Exception as e:
+        st.error(f"Falha ao carregar histórico: {e}")
+        st.stop()
+
+# checklist (para você ver “total de concursos” correto)
+with st.sidebar:
+    st.markdown("### Checklist da base")
+    st.caption(f"Linhas: {len(df_concursos)}")
+    st.caption(f"Concurso min/max: {df_concursos['concurso'].min()} / {df_concursos['concurso'].max()}")
+    st.caption(f"Data min/max: {df_concursos['data'].min().date()} / {df_concursos['data'].max().date()}")
+
+
+freq_df = calcular_frequencias(df_concursos, N_DEZENAS_HIST, N_UNIVERSO)
 
 DEZENAS_ULTIMO_CONCURSO: set[int] = set()
 if not df_concursos.empty:
-    last = df_concursos.sort_values("concurso").iloc[-1]
+    last = df_concursos.iloc[-1]
     DEZENAS_ULTIMO_CONCURSO = {int(last[f"d{i}"]) for i in range(1, N_DEZENAS_HIST + 1)}
+
+
+# ==========================
+# SESSION STATE (JOGOS)
+# ==========================
 
 if "jogos" not in st.session_state:
     st.session_state["jogos"] = []
@@ -750,22 +556,23 @@ if "jogos_info" not in st.session_state:
     st.session_state["jogos_info"] = []
 
 explicacoes = {
-    "Aleatório puro": "Sorteia dezenas totalmente aleatórias dentro do universo da loteria.",
-    "Balanceado par/ímpar": "Tenta evitar all-in em pares ou ímpares, mantendo alguma mistura.",
-    "Quentes/Frias/Mix": "Combina dezenas mais sorteadas, menos sorteadas e neutras.",
-    "Sem sequências longas": "Evita jogos com muitas dezenas consecutivas.",
+    "Aleatório puro": "Sorteia dezenas totalmente aleatórias dentro do universo.",
+    "Balanceado par/ímpar": "Evita jogos 100% pares ou 100% ímpares (tenta até 50 vezes).",
+    "Quentes/Frias/Mix": "Mistura dezenas com maior frequência, menor frequência e neutras.",
+    "Sem sequências longas": "Evita sequências consecutivas longas (tenta até 100 vezes).",
 }
 
+
 # ==========================
-# PÁGINA GERAR JOGOS
+# PÁGINA: GERAR JOGOS
 # ==========================
 
 if pagina == "Gerar jogos":
     titulo = "Gerador de jogos da Mega-Sena" if modalidade == "Mega-Sena" else "Gerador de jogos da Lotofácil"
     st.markdown(f"<div class='main-title'>{titulo}</div>", unsafe_allow_html=True)
     st.markdown(
-        "<div class='main-subtitle'>Escolha o modo e as estratégias, ajuste filtros/opções de custo "
-        "e clique em <b>Gerar</b> para ver seus jogos.</div>",
+        "<div class='main-subtitle'>Gere jogos e avalie padrões (apenas descritivo). "
+        "Use o checklist na sidebar para conferir o total de concursos carregados.</div>",
         unsafe_allow_html=True,
     )
 
@@ -773,53 +580,37 @@ if pagina == "Gerar jogos":
     with col1:
         st.markdown("### Resumo do histórico")
         st.metric("Total de concursos", len(df_concursos))
-        if not df_concursos.empty:
-            st.caption(f"De {df_concursos['data'].min().date()} até {df_concursos['data'].max().date()}")
+        st.caption(f"De {df_concursos['data'].min().date()} até {df_concursos['data'].max().date()}")
+        st.caption(f"Último concurso: {int(df_concursos['concurso'].max())}")
 
     with col2:
-        st.markdown("### Parâmetros gerais")
+        st.markdown("### Parâmetros")
         st.write(f"- Loteria: **{modalidade}**")
         st.write(f"- Universo: 1–{N_UNIVERSO}")
-        st.write(f"- Valor aposta base: R$ {preco_base:,.2f}".replace(".", ","))
+        st.write(f"- Aposta base: {money_ptbr(preco_base)}")
         if dezenas_fixas:
-            st.write(f"- Dezenas fixas: {sorted(dezenas_fixas)}")
+            st.write(f"- Fixas: {sorted(dezenas_fixas)}")
         if dezenas_proibidas:
-            st.write(f"- Dezenas proibidas: {sorted(dezenas_proibidas)}")
+            st.write(f"- Proibidas: {sorted(dezenas_proibidas)}")
         if orcamento_max > 0:
-            st.write(
-                f"- Orçamento máx.: R$ {orcamento_max:,.2f}"
-                .replace(",", "X").replace(".", ",").replace("X", ".")
-            )
+            st.write(f"- Orçamento máx.: {money_ptbr(orcamento_max)}")
 
     st.divider()
 
-    modo_geracao = st.radio("Modo de geração", ["Uma estratégia", "Misto de estratégias"])
+    modo = st.radio("Modo de geração", ["Uma estratégia", "Misto de estratégias"])
+
     gerar = False
     gerar_misto = False
 
-    if modo_geracao == "Uma estratégia":
-        st.markdown("### Estratégia de geração")
-        estrategia = st.selectbox(
-            "Estratégia",
-            ["Aleatório puro", "Balanceado par/ímpar", "Quentes/Frias/Mix", "Sem sequências longas"],
-        )
-
-        st.markdown("### Parâmetros básicos")
-        qtd_jogos = st.number_input(
-            "Quantidade de jogos",
-            min_value=1,
-            max_value=500,
-            value=10,
-            step=1,
-            format="%d",
-        )
+    if modo == "Uma estratégia":
+        estrategia = st.selectbox("Estratégia", list(explicacoes.keys()))
+        qtd_jogos = st.number_input("Quantidade de jogos", min_value=1, max_value=500, value=10, step=1)
         tam_jogo = st.slider("Dezenas por jogo", N_MIN, N_MAX, N_MIN)
 
         q_quentes = q_frias = q_neutras = 0
         limite_seq = 3
 
         if estrategia == "Quentes/Frias/Mix":
-            st.markdown("### Mix de dezenas")
             colq1, colq2, colq3 = st.columns(3)
             with colq1:
                 q_quentes = st.number_input("Quentes", 0, tam_jogo, min(5, tam_jogo))
@@ -828,187 +619,116 @@ if pagina == "Gerar jogos":
             with colq3:
                 q_neutras = st.number_input("Neutras", 0, tam_jogo, max(0, tam_jogo - q_quentes - q_frias))
 
-            if q_quentes + q_frias + q_neutras != tam_jogo:
-                st.info("Dica: ajuste quentes/frias/neutras para somar exatamente o tamanho do jogo (o app completa se faltar).")
-
         if estrategia == "Sem sequências longas":
-            st.markdown("### Controle de sequência")
             limite_seq = st.slider("Máx. sequência permitida", 2, min(10, tam_jogo), 3)
 
-        st.markdown("---")
+        with st.expander("Como funciona?", expanded=False):
+            st.write(explicacoes[estrategia])
+
         gerar = st.button("Gerar jogos", type="primary")
 
-        with st.expander("Como funciona esta estratégia?", expanded=False):
-            st.write(explicacoes.get(estrategia, ""))
-
     else:
-        st.markdown("### Parâmetros básicos do misto")
         tam_jogomix = st.slider("Dezenas por jogo", N_MIN, N_MAX, N_MIN, key="tam_jogomix")
 
-        st.markdown("Quantos jogos por estratégia?")
         jogos_misto: dict[str, int] = {}
-        jogos_misto["Aleatório puro"] = st.number_input(
-            "Aleatório puro", min_value=0, max_value=500, value=2, step=1, key="mix_qtd_aleatorio"
-        )
-        jogos_misto["Balanceado par/ímpar"] = st.number_input(
-            "Balanceado par/ímpar", min_value=0, max_value=500, value=2, step=1, key="mix_qtd_balanceado"
-        )
+        st.markdown("Quantidade por estratégia:")
+        jogos_misto["Aleatório puro"] = st.number_input("Aleatório puro", min_value=0, max_value=500, value=2, step=1)
+        jogos_misto["Balanceado par/ímpar"] = st.number_input("Balanceado par/ímpar", min_value=0, max_value=500, value=2, step=1, key="mix_bal")
 
-        with st.expander("Quentes/Frias/Mix (opcional)", expanded=False):
-            jogos_misto["Quentes/Frias/Mix"] = st.number_input(
-                "Jogos Quentes/Frias/Mix", min_value=0, max_value=500, value=2, step=1, key="mix_qtd_qfm"
-            )
+        with st.expander("Quentes/Frias/Mix", expanded=False):
+            jogos_misto["Quentes/Frias/Mix"] = st.number_input("Jogos Quentes/Frias/Mix", min_value=0, max_value=500, value=2, step=1)
             colq1m, colq2m, colq3m = st.columns(3)
             with colq1m:
-                mix_q_quentes = st.number_input("Quentes", 0, tam_jogomix, min(5, tam_jogomix), key="mix_q_quentes")
+                mix_q_quentes = st.number_input("Quentes (misto)", 0, tam_jogomix, min(5, tam_jogomix))
             with colq2m:
-                mix_q_frias = st.number_input("Frias", 0, tam_jogomix, min(5, tam_jogomix), key="mix_q_frias")
+                mix_q_frias = st.number_input("Frias (misto)", 0, tam_jogomix, min(5, tam_jogomix))
             with colq3m:
-                mix_q_neutras = st.number_input(
-                    "Neutras", 0, tam_jogomix, max(0, tam_jogomix - mix_q_quentes - mix_q_frias), key="mix_q_neutras"
-                )
+                mix_q_neutras = st.number_input("Neutras (misto)", 0, tam_jogomix, max(0, tam_jogomix - mix_q_quentes - mix_q_frias))
 
-        with st.expander("Sem sequências longas (opcional)", expanded=False):
-            jogos_misto["Sem sequências longas"] = st.number_input(
-                "Jogos Sem sequências longas", min_value=0, max_value=500, value=2, step=1, key="mix_qtd_semseq"
-            )
-            mix_limite_seq = st.slider(
-                "Máx. sequência permitida (misto)",
-                2,
-                min(10, tam_jogomix),
-                3,
-                key="mix_limite_seq",
-            )
+        with st.expander("Sem sequências longas", expanded=False):
+            jogos_misto["Sem sequências longas"] = st.number_input("Jogos Sem sequências longas", min_value=0, max_value=500, value=2, step=1)
+            mix_limite_seq = st.slider("Máx. sequência (misto)", 2, min(10, tam_jogomix), 3)
 
-        st.markdown("---")
         gerar_misto = st.button("Gerar jogos mistos", type="primary")
 
-        with st.expander("O que cada estratégia faz?", expanded=False):
-            for nome, desc in explicacoes.items():
-                st.markdown(f"**{nome}**")
-                st.write(desc)
-
-    tab_jogos, tab_tabela, tab_analise = st.tabs(
-        ["Jogos gerados", "Tabela / Resumo / Exportar", "Análise & Simulação"]
-    )
+    tab_jogos, tab_tabela, tab_analise = st.tabs(["Jogos gerados", "Tabela / Exportar", "Análise & Simulação"])
 
     jogos: list[list[int]] = st.session_state["jogos"]
     jogos_info: list[dict] = st.session_state["jogos_info"]
 
-    # ===== geração (uma estratégia)
-    if modo_geracao == "Uma estratégia" and gerar:
+    # ===== geração
+    if modo == "Uma estratégia" and gerar:
         if estrategia == "Aleatório puro":
-            jogos = gerar_aleatorio_puro(int(qtd_jogos), tam_jogo, N_UNIVERSO)
+            jogos = gerar_aleatorio_puro(int(qtd_jogos), int(tam_jogo), N_UNIVERSO)
         elif estrategia == "Balanceado par/ímpar":
-            jogos = gerar_balanceado_par_impar(int(qtd_jogos), tam_jogo, N_UNIVERSO)
+            jogos = gerar_balanceado_par_impar(int(qtd_jogos), int(tam_jogo), N_UNIVERSO)
         elif estrategia == "Quentes/Frias/Mix":
             jogos = gerar_quentes_frias_mix(
-                qtd_jogos=int(qtd_jogos),
-                tam_jogo=tam_jogo,
+                qtd=int(qtd_jogos),
+                tam=int(tam_jogo),
                 freq_df=freq_df,
                 n_universo=N_UNIVERSO,
                 proporcao=(int(q_quentes), int(q_frias), int(q_neutras)),
             )
-        elif estrategia == "Sem sequências longas":
-            jogos = gerar_sem_sequencias(
-                qtd_jogos=int(qtd_jogos),
-                tam_jogo=tam_jogo,
-                n_universo=N_UNIVERSO,
-                limite_sequencia=int(limite_seq),
-            )
         else:
-            jogos = []
+            jogos = gerar_sem_sequencias(int(qtd_jogos), int(tam_jogo), N_UNIVERSO, int(limite_seq))
 
-        jogos = filtrar_jogos(
-            jogos,
-            dezenas_fixas=dezenas_fixas,
-            dezenas_proibidas=dezenas_proibidas,
-            soma_min=soma_min_val,
-            soma_max=soma_max_val,
-        )
-        jogos = [j for j in jogos if len(j) >= N_MIN]
+        # aplica filtros
+        jogos = [j for j in jogos if filtrar_jogo(j, dezenas_fixas, dezenas_proibidas, soma_min_val, soma_max_val)]
         jogos_info = [{"estrategia": estrategia, "jogo": j} for j in jogos]
 
-    # ===== geração (misto)
-    if modo_geracao == "Misto de estratégias" and gerar_misto:
+    if modo == "Misto de estratégias" and gerar_misto:
         jogos_info = []
 
-        qtd_ap = int(jogos_misto.get("Aleatório puro", 0))
-        if qtd_ap > 0:
-            js = gerar_aleatorio_puro(qtd_ap, tam_jogomix, N_UNIVERSO)
+        if int(jogos_misto.get("Aleatório puro", 0)) > 0:
+            js = gerar_aleatorio_puro(int(jogos_misto["Aleatório puro"]), int(tam_jogomix), N_UNIVERSO)
             jogos_info.extend({"estrategia": "Aleatório puro", "jogo": j} for j in js)
 
-        qtd_bal = int(jogos_misto.get("Balanceado par/ímpar", 0))
-        if qtd_bal > 0:
-            js = gerar_balanceado_par_impar(qtd_bal, tam_jogomix, N_UNIVERSO)
+        if int(jogos_misto.get("Balanceado par/ímpar", 0)) > 0:
+            js = gerar_balanceado_par_impar(int(jogos_misto["Balanceado par/ímpar"]), int(tam_jogomix), N_UNIVERSO)
             jogos_info.extend({"estrategia": "Balanceado par/ímpar", "jogo": j} for j in js)
 
-        qtd_qfm = int(jogos_misto.get("Quentes/Frias/Mix", 0))
-        if qtd_qfm > 0:
+        if int(jogos_misto.get("Quentes/Frias/Mix", 0)) > 0:
             js = gerar_quentes_frias_mix(
-                qtd_jogos=qtd_qfm,
-                tam_jogo=tam_jogomix,
+                qtd=int(jogos_misto["Quentes/Frias/Mix"]),
+                tam=int(tam_jogomix),
                 freq_df=freq_df,
                 n_universo=N_UNIVERSO,
                 proporcao=(int(mix_q_quentes), int(mix_q_frias), int(mix_q_neutras)),
             )
             jogos_info.extend({"estrategia": "Quentes/Frias/Mix", "jogo": j} for j in js)
 
-        qtd_ss = int(jogos_misto.get("Sem sequências longas", 0))
-        if qtd_ss > 0:
-            js = gerar_sem_sequencias(
-                qtd_jogos=qtd_ss,
-                tam_jogo=tam_jogomix,
-                n_universo=N_UNIVERSO,
-                limite_sequencia=int(mix_limite_seq),
-            )
+        if int(jogos_misto.get("Sem sequências longas", 0)) > 0:
+            js = gerar_sem_sequencias(int(jogos_misto["Sem sequências longas"]), int(tam_jogomix), N_UNIVERSO, int(mix_limite_seq))
             jogos_info.extend({"estrategia": "Sem sequências longas", "jogo": j} for j in js)
 
-        # Filtra mantendo alinhamento (corrige bug de duplicados/descompasso)
-        def _passa_filtros(jogo: list[int]) -> bool:
-            if len(jogo) < N_MIN:
-                return False
-            s = set(jogo)
-            if dezenas_fixas and not set(dezenas_fixas).issubset(s):
-                return False
-            if dezenas_proibidas and (set(dezenas_proibidas) & s):
-                return False
-            soma = sum(jogo)
-            if soma_min_val is not None and soma < soma_min_val:
-                return False
-            if soma_max_val is not None and soma > soma_max_val:
-                return False
-            return True
-
-        jogos_info = [info for info in jogos_info if _passa_filtros(info["jogo"])]
+        # filtra mantendo alinhamento
+        jogos_info = [
+            info for info in jogos_info
+            if filtrar_jogo(info["jogo"], dezenas_fixas, dezenas_proibidas, soma_min_val, soma_max_val)
+        ]
         jogos = [info["jogo"] for info in jogos_info]
 
     # ===== orçamento
-    avisoorcamento = None
+    avisoorc = None
     if (gerar or gerar_misto) and jogos and orcamento_max > 0:
-        jogos_dentro: list[list[int]] = []
-        jogos_info_dentro: list[dict] = []
+        dentro_info: list[dict] = []
         custo_acum = 0.0
-
         for info in jogos_info:
             jogo = info["jogo"]
-            custo_jogo = preco_aposta_loteria(len(jogo), N_MIN, preco_base)
-            if custo_acum + custo_jogo > orcamento_max:
+            custo = preco_aposta_loteria(len(jogo), N_MIN, preco_base)
+            if custo_acum + custo > orcamento_max:
                 break
-            custo_acum += custo_jogo
-            jogos_dentro.append(jogo)
-            jogos_info_dentro.append(info)
+            custo_acum += custo
+            dentro_info.append(info)
 
-        if len(jogos_dentro) < len(jogos):
-            avisoorcamento = (
-                f"Foram mantidos {len(jogos_dentro)} jogos dentro do orçamento. "
-                f"{len(jogos) - len(jogos_dentro)} jogos foram descartados."
-            )
+        if len(dentro_info) < len(jogos_info):
+            avisoorc = f"Mantidos {len(dentro_info)} jogos no orçamento; descartados {len(jogos_info) - len(dentro_info)}."
 
-        jogos = jogos_dentro
-        jogos_info = jogos_info_dentro
+        jogos_info = dentro_info
+        jogos = [info["jogo"] for info in jogos_info]
 
-    # ===== persistência em session_state
+    # ===== persistência (session_state)
     if (gerar or gerar_misto) and jogos:
         st.session_state["jogos"] = jogos
         st.session_state["jogos_info"] = jogos_info
@@ -1017,38 +737,21 @@ if pagina == "Gerar jogos":
         jogos_info = st.session_state["jogos_info"]
 
     # ===== UI
-    if not jogos and (gerar or gerar_misto):
-        tab_jogos.warning(
-            "Nenhum jogo foi gerado após aplicar filtros e orçamento. Revise os parâmetros na barra lateral."
-        )
-        tab_tabela.info("Nenhum dado para exibir ainda.")
-        tab_analise.info("Nenhuma análise disponível sem jogos gerados.")
-    elif not jogos:
-        tab_jogos.write("Ajuste os parâmetros na barra lateral e clique em Gerar.")
-        tab_tabela.write("A tabela aparecerá aqui após a geração.")
-        tab_analise.write("A análise aparecerá aqui após a geração.")
+    if not jogos:
+        with tab_jogos:
+            st.info("Gere jogos para exibir resultados.")
     else:
         custo_total = calcular_custo_total(jogos, N_MIN, preco_base)
         prob_total = prob_premio_maximo_pacote(jogos, N_MIN, COMB_TARGET)
 
         with tab_jogos:
-            colr1, colr2, colr3 = st.columns(3)
-            with colr1:
-                st.metric("Quantidade de jogos", len(jogos))
-            with colr2:
-                st.metric(
-                    "Custo total estimado",
-                    f"R$ {custo_total:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."),
-                )
-            with colr3:
-                if prob_total > 0:
-                    inv = 1.0 / prob_total
-                    st.metric("Chance aprox. prêmio máximo", f"1 em {inv:,.0f}".replace(",", "."))
-                else:
-                    st.metric("Chance aprox. prêmio máximo", "NA")
+            c1, c2, c3 = st.columns(3)
+            c1.metric("Quantidade de jogos", len(jogos))
+            c2.metric("Custo total estimado", money_ptbr(custo_total))
+            c3.metric("Chance aprox. prêmio máximo", ("NA" if prob_total <= 0 else f"1 em {1.0 / prob_total:,.0f}".replace(",", ".")))
 
-            if avisoorcamento:
-                st.info(avisoorcamento)
+            if avisoorc:
+                st.info(avisoorc)
 
             colleft, colcenter, colright = st.columns([1, 2, 1])
             with colcenter:
@@ -1057,46 +760,41 @@ if pagina == "Gerar jogos":
 
         with tab_tabela:
             dados = []
-            for idx_global, info in enumerate(jogos_info, start=1):
-                jogo = info["jogo"]
-                row = {"jogo_id": idx_global, "estrategia": info["estrategia"]}
-                for idx, d in enumerate(jogo, start=1):
-                    row[f"d{idx}"] = d
+            for idx, info in enumerate(jogos_info, start=1):
+                jogo = sorted(info["jogo"])
+                row = {"jogo_id": idx, "estrategia": info["estrategia"]}
 
-                soma_jogo = sum(jogo)
-                pares, impares = pares_impares(jogo)
-                bax, alt = baixos_altos(jogo, LIMITE_BAIXO)
-                nprimos = contar_primos(jogo)
-                repet_ultimo = len(set(jogo) & DEZENAS_ULTIMO_CONCURSO)
+                for jdx, d in enumerate(jogo, start=1):
+                    row[f"d{jdx}"] = int(d)
 
-                if soma_jogo < 150:
-                    faixa_soma = "muito baixa"
-                elif soma_jogo < 250:
-                    faixa_soma = "baixa"
-                elif soma_jogo < 350:
-                    faixa_soma = "dentro do comum"
+                soma = sum(jogo)
+                p, i = pares_impares(jogo)
+                b, a = baixos_altos(jogo, LIMITE_BAIXO)
+                primos = contar_primos(jogo)
+                rep_ult = len(set(jogo) & DEZENAS_ULTIMO_CONCURSO)
+
+                if soma < 150:
+                    faixa = "muito baixa"
+                elif soma < 250:
+                    faixa = "baixa"
+                elif soma < 350:
+                    faixa = "dentro do comum"
                 else:
-                    faixa_soma = "alta/muito alta"
+                    faixa = "alta/muito alta"
 
-                padrao_extremo = (
-                    pares == 0
-                    or impares == 0
-                    or bax == 0
-                    or alt == 0
-                    or faixa_soma in ("muito baixa", "alta/muito alta")
-                )
+                extremo = (p == 0 or i == 0 or b == 0 or a == 0 or faixa in ("muito baixa", "alta/muito alta"))
 
                 row.update(
                     {
-                        "soma": soma_jogo,
-                        "faixa_soma": faixa_soma,
-                        "pares": pares,
-                        "impares": impares,
-                        "baixos": bax,
-                        "altos": alt,
-                        "nprimos": nprimos,
-                        "repeticoes_ultimo_concurso": repet_ultimo,
-                        "padrao_extremo": padrao_extremo,
+                        "soma": soma,
+                        "faixa_soma": faixa,
+                        "pares": p,
+                        "impares": i,
+                        "baixos": b,
+                        "altos": a,
+                        "nprimos": primos,
+                        "repeticoes_ultimo_concurso": rep_ult,
+                        "padrao_extremo": extremo,
                     }
                 )
                 dados.append(row)
@@ -1104,12 +802,9 @@ if pagina == "Gerar jogos":
             jogos_df = pd.DataFrame(dados)
 
             def highlight_extreme(r):
-                if r.get("padrao_extremo", False):
-                    return ["background-color: #fee2e2"] * len(r)
-                return [""] * len(r)
+                return ["background-color: #fee2e2"] * len(r) if r.get("padrao_extremo", False) else [""] * len(r)
 
-            styled = jogos_df.style.apply(highlight_extreme, axis=1)
-            st.dataframe(styled, use_container_width=True)
+            st.dataframe(jogos_df.style.apply(highlight_extreme, axis=1), use_container_width=True)
 
             csv_data = jogos_df.to_csv(index=False).encode("utf-8")
             st.download_button(
@@ -1120,164 +815,53 @@ if pagina == "Gerar jogos":
             )
 
         with tab_analise:
-            st.subheader("Resumo do pacote atual")
-            scores: list[float] = []
-            extremos = 0
-
-            for jogo in jogos:
-                soma_jogo = sum(jogo)
-                pares, impares = pares_impares(jogo)
-                bax, alt = baixos_altos(jogo, LIMITE_BAIXO)
-                nprimos = contar_primos(jogo)
-                repet_ultimo = len(set(jogo) & DEZENAS_ULTIMO_CONCURSO)
-
-                if soma_jogo < 150:
-                    faixa_soma = "muito baixa"
-                elif soma_jogo < 250:
-                    faixa_soma = "baixa"
-                elif soma_jogo < 350:
-                    faixa_soma = "dentro do comum"
-                else:
-                    faixa_soma = "alta/muito alta"
-
-                padrao_extremo = (
-                    pares == 0
-                    or impares == 0
-                    or bax == 0
-                    or alt == 0
-                    or faixa_soma in ("muito baixa", "alta/muito alta")
-                )
-                if padrao_extremo:
-                    extremos += 1
-
-                score = 10.0
-                if faixa_soma == "dentro do comum":
-                    score += 0.5
-                elif faixa_soma == "baixa":
-                    score -= 0.5
-                else:
-                    score -= 1.0
-
-                if pares == impares:
-                    score += 0.5
-                elif abs(pares - impares) <= 2:
-                    score += 0.2
-                else:
-                    score -= 0.3
-
-                if nprimos in (2, 3, 4):
-                    score += 0.3
-                elif nprimos == 0 or nprimos >= 7:
-                    score -= 0.5
-
-                if bax > 0 and alt > 0:
-                    score += 0.2
-                else:
-                    score -= 0.5
-
-                if repet_ultimo >= 5:
-                    score -= 0.3
-
-                score = max(0.0, min(10.0, score))
-                scores.append(score)
-
-            colr1, colr2, colr3 = st.columns(3)
-            with colr1:
-                st.metric("Média do score heurístico", f"{np.mean(scores):.2f}" if scores else "NA")
-            with colr2:
-                pct_ok = 100.0 * (1 - extremos / len(jogos)) if jogos else 0.0
-                st.metric("% jogos sem padrão extremo", f"{pct_ok:.1f}%" if jogos else "NA")
-            with colr3:
-                media_dezenas = np.mean([len(j) for j in jogos]) if jogos else 0.0
-                st.metric("Média de dezenas por jogo", f"{media_dezenas:.1f}" if jogos else "NA")
-
-            st.markdown("### Cobertura das dezenas nos jogos gerados")
-            todas_dezenas = [d for j in jogos for d in j]
-            if todas_dezenas:
-                freq_jogos = pd.Series(todas_dezenas).value_counts().sort_index()
-                df_freq_jogos = freq_jogos.reset_index()
-                df_freq_jogos.columns = ["dezena", "frequencia"]
-
-                cola1, cola2 = st.columns(2)
-                with cola1:
-                    st.markdown("Frequência das dezenas")
-                    st.bar_chart(df_freq_jogos.set_index("dezena")["frequencia"])
-                with cola2:
-                    st.markdown("Top dezenas mais usadas")
-                    topn = min(10, len(df_freq_jogos))
-                    st.dataframe(
-                        df_freq_jogos.sort_values("frequencia", ascending=False).head(topn),
-                        use_container_width=True,
-                    )
-            else:
-                st.info("Nenhuma dezena para exibir.")
+            st.subheader("Cobertura das dezenas nos jogos gerados")
+            todas = [d for j in jogos for d in j]
+            if todas:
+                s = pd.Series(todas).value_counts().sort_index()
+                dff = s.reset_index()
+                dff.columns = ["dezena", "frequencia"]
+                colA, colB = st.columns(2)
+                colA.bar_chart(dff.set_index("dezena")["frequencia"])
+                colB.dataframe(dff.sort_values("frequencia", ascending=False).head(10), use_container_width=True)
 
             st.markdown("---")
-            st.subheader("Simulações dos seus jogos")
-            st.markdown("Simulação de acertos em um concurso")
-
-            modosim = st.radio(
-                "Escolher resultado para simulação",
-                ["Usar concurso histórico", "Digitar resultado manual"],
-                horizontal=True,
-            )
+            st.subheader("Simulação de acertos")
+            modo_sim = st.radio("Escolher resultado", ["Usar concurso histórico", "Digitar resultado manual"], horizontal=True)
 
             dezenas_sorteadas: list[int] = []
-            if modosim == "Usar concurso histórico":
-                ultimos_ids = (
-                    df_concursos.sort_values("concurso", ascending=False)["concurso"]
-                    .head(100)
-                    .tolist()
-                )
-                concurso_escolhido = st.selectbox(
-                    "Concurso para simular",
-                    options=ultimos_ids,
-                    format_func=lambda c: f"Concurso {c}",
-                )
-                linha = df_concursos.loc[df_concursos["concurso"] == concurso_escolhido].iloc[0]
+            if modo_sim == "Usar concurso histórico":
+                ultimos = df_concursos.sort_values("concurso", ascending=False)["concurso"].head(100).tolist()
+                conc = st.selectbox("Concurso", ultimos, format_func=lambda x: f"Concurso {x}")
+                linha = df_concursos.loc[df_concursos["concurso"] == conc].iloc[0]
                 dezenas_sorteadas = [int(linha[f"d{i}"]) for i in range(1, N_DEZENAS_HIST + 1)]
-                st.write(f"Dezenas sorteadas: {formatar_jogo(dezenas_sorteadas)}")
+                st.write("Dezenas sorteadas:", formatar_jogo(dezenas_sorteadas))
             else:
-                placeholder = (
-                    "Ex: 05, 12, 23, 34, 45, 60"
-                    if modalidade == "Mega-Sena"
-                    else "Ex: 01, 02, 03, ..., 25"
-                )
-                resultado_manual = st.text_input(
-                    f"Informe {N_DEZENAS_HIST} dezenas separadas por vírgula, espaço ou ;",
-                    placeholder=placeholder,
-                )
-                dezenas_sorteadas = parse_lista(resultado_manual)
-
-                if resultado_manual and len(dezenas_sorteadas) != N_DEZENAS_HIST:
-                    st.warning(f"Informe exatamente {N_DEZENAS_HIST} dezenas numéricas para a simulação.")
+                txt = st.text_input(f"Informe {N_DEZENAS_HIST} dezenas (vírgula/space/;)", placeholder="Ex: 05, 12, 23, ...")
+                dezenas_sorteadas = parse_lista(txt)
+                if txt and len(dezenas_sorteadas) != N_DEZENAS_HIST:
+                    st.warning(f"Informe exatamente {N_DEZENAS_HIST} dezenas.")
 
             if len(dezenas_sorteadas) == N_DEZENAS_HIST:
                 try:
-                    validar_dezenas(dezenas_sorteadas, N_UNIVERSO, "Resultado da simulação")
+                    validar_dezenas(dezenas_sorteadas, N_UNIVERSO, "Resultado")
                 except ValueError as e:
                     st.error(str(e))
                 else:
-                    df_sim = simular_premios(jogos, dezenas_sorteadas)
-                    st.markdown("#### Resumo de acertos no sorteio escolhido")
-                    dist_acertos = df_sim["acertos"].value_counts().sort_index().reset_index()
-                    dist_acertos.columns = ["acertos", "qtd_jogos"]
-                    st.dataframe(dist_acertos, use_container_width=True)
+                    dfsim = simular_acertos(jogos, dezenas_sorteadas)
+                    dist = dfsim["acertos"].value_counts().sort_index().reset_index()
+                    dist.columns = ["acertos", "qtd_jogos"]
+                    st.dataframe(dist, use_container_width=True)
+                    st.dataframe(dfsim, use_container_width=True)
 
-                    st.markdown("#### Detalhamento por jogo")
-                    st.dataframe(df_sim, use_container_width=True)
-            else:
-                st.info("Informe dezenas sorteadas para simular acertos.")
 
 # ==========================
-# PÁGINA ANÁLISES
+# PÁGINA: ANÁLISES ESTATÍSTICAS
 # ==========================
 
 elif pagina == "Análises estatísticas":
-    st.title(f"Análises estatísticas da {modalidade}")
-    st.caption("As análises são descritivas e não garantem aumento de chance em sorteios futuros.")
-
-    limite_baixo = 30 if modalidade == "Mega-Sena" else 13
+    st.title(f"Análises estatísticas — {modalidade}")
+    st.caption("Análises descritivas; não garantem aumento de chance.")
 
     tab_freq, tab_padroes, tab_somas, tab_ultimos = st.tabs(
         ["Frequência & Atraso", "Par/ímpar & Baixa/Alta", "Soma das dezenas", "Últimos resultados"]
@@ -1287,14 +871,11 @@ elif pagina == "Análises estatísticas":
         st.subheader("Frequência e atraso por dezena")
         atraso_df = calcular_atraso(freq_df, df_concursos, N_DEZENAS_HIST, N_UNIVERSO)
 
-        col1, col2 = st.columns(2)
-        with col1:
+        c1, c2 = st.columns(2)
+        with c1:
             st.markdown("Ordenado por frequência total")
-            st.dataframe(
-                freq_df.sort_values("frequencia", ascending=False).reset_index(drop=True),
-                use_container_width=True,
-            )
-        with col2:
+            st.dataframe(freq_df.sort_values("frequencia", ascending=False).reset_index(drop=True), use_container_width=True)
+        with c2:
             st.markdown("Ordenado por atraso atual")
             st.dataframe(
                 atraso_df.sort_values(["atraso_atual", "frequencia"], ascending=[False, False]).reset_index(drop=True),
@@ -1303,118 +884,36 @@ elif pagina == "Análises estatísticas":
 
         st.markdown("---")
         st.markdown("Frequência recente vs total")
-        nrec = st.slider("Concursos recentes para analisar", min_value=20, max_value=300, value=50, step=10)
-
+        nrec = st.slider("Concursos recentes", min_value=20, max_value=300, value=50, step=10)
         df_recent = df_concursos.sort_values("concurso", ascending=False).head(nrec)
         freq_recent = calcular_frequencias(df_recent, N_DEZENAS_HIST, N_UNIVERSO).rename(columns={"frequencia": "freq_recente"})
-        freq_merge = freq_df.merge(freq_recent, on="dezena", how="left")
-        freq_merge["freq_recente"] = freq_merge["freq_recente"].fillna(0).astype(int)
+        merge = freq_df.merge(freq_recent, on="dezena", how="left")
+        merge["freq_recente"] = merge["freq_recente"].fillna(0).astype(int)
 
-        colf1, colf2 = st.columns(2)
-        with colf1:
-            st.markdown("Top dezenas recentes (freq. recente)")
-            st.dataframe(freq_merge.sort_values("freq_recente", ascending=False).head(20), use_container_width=True)
-        with colf2:
-            st.markdown("Top dezenas históricas (freq. total)")
-            st.dataframe(freq_merge.sort_values("frequencia", ascending=False).head(20), use_container_width=True)
+        c3, c4 = st.columns(2)
+        c3.dataframe(merge.sort_values("freq_recente", ascending=False).head(20), use_container_width=True)
+        c4.dataframe(merge.sort_values("frequencia", ascending=False).head(20), use_container_width=True)
 
     with tab_padroes:
-        st.subheader("Distribuição de par/ímpar e baixa/alta")
-        df_padroes, dist_par_impar, dist_baixa_alta = calcular_padroes_par_impar_baixa_alta(
-            df_concursos, N_DEZENAS_HIST, limite_baixo
-        )
-        st.markdown("Padrões mais frequentes")
-        st.dataframe(dist_par_impar, use_container_width=True)
-        st.dataframe(dist_baixa_alta, use_container_width=True)
-
-        with st.expander("Tabela detalhada por concurso"):
-            st.dataframe(df_padroes.sort_values("concurso"), use_container_width=True)
+        st.subheader("Distribuição de padrões")
+        limite_baixo = LIMITE_BAIXO
+        dfp, dist_pi, dist_ba = calcular_padroes_par_impar_baixa_alta(df_concursos, N_DEZENAS_HIST, limite_baixo)
+        st.markdown("Par/ímpar")
+        st.dataframe(dist_pi, use_container_width=True)
+        st.markdown("Baixa/Alta")
+        st.dataframe(dist_ba, use_container_width=True)
+        with st.expander("Detalhado por concurso"):
+            st.dataframe(dfp.sort_values("concurso"), use_container_width=True)
 
     with tab_somas:
-        st.subheader("Soma das dezenas por concurso")
-        df_somas, dist_faixas = calcular_somas(df_concursos, N_DEZENAS_HIST)
-        col1, col2 = st.columns(2)
-        with col1:
-            st.markdown("Tabela por concurso")
-            st.dataframe(df_somas.sort_values("concurso").reset_index(drop=True), use_container_width=True)
-        with col2:
-            st.markdown("Distribuição por faixa de soma")
-            st.dataframe(dist_faixas, use_container_width=True)
+        st.subheader("Soma das dezenas")
+        dfs, dist = calcular_somas(df_concursos, N_DEZENAS_HIST)
+        c1, c2 = st.columns(2)
+        c1.dataframe(dfs.sort_values("concurso").reset_index(drop=True), use_container_width=True)
+        c2.dataframe(dist, use_container_width=True)
 
     with tab_ultimos:
-        st.subheader("Últimos resultados da modalidade")
-        qtd_ultimos = st.slider("Quantidade de concursos para exibir", min_value=5, max_value=50, value=10, step=5)
-        ultimos = df_concursos.sort_values("concurso", ascending=False).head(qtd_ultimos)
-        st.dataframe(ultimos.sort_values("concurso", ascending=True), use_container_width=True)
-
-# ==========================
-# PÁGINA DEBUG MEGA
-# ==========================
-
-elif pagina == "Debug Mega":
-    st.title("Debug Mega-Sena")
-    csv_path = "historicomegasena.csv"
-
-    st.markdown("### 1. Ler XLSX manualmente (arquivo anexado ou baixado)")
-    uploaded = st.file_uploader("Envie o arquivo Mega-Sena.xlsx", type=["xlsx"])
-    if uploaded is not None:
-        df_raw = pd.read_excel(uploaded)
-        st.write("Colunas XLSX:", list(df_raw.columns))
-        st.write("Total linhas XLSX:", len(df_raw))
-
-        cols = ["Concurso", "Data do Sorteio", "Bola1", "Bola2", "Bola3", "Bola4", "Bola5", "Bola6"]
-        falta = [c for c in cols if c not in df_raw.columns]
-        if falta:
-            st.error(f"Colunas faltando no XLSX: {falta}")
-        else:
-            df = df_raw[cols].copy()
-            df.rename(columns={"Concurso": "concurso", "Data do Sorteio": "data"}, inplace=True)
-
-            df = _limpar_concurso_data(df)
-
-            dezenas_cols = [f"Bola{i}" for i in range(1, 7)]
-            for c in dezenas_cols:
-                df[c] = pd.to_numeric(df[c], errors="coerce")
-            df = df.dropna(subset=dezenas_cols)
-            for c in dezenas_cols:
-                df[c] = df[c].astype(int)
-
-            # valida faixa
-            for c in dezenas_cols:
-                df = df[df[c].between(1, 60)]
-
-            st.write("Concursos únicos após limpeza (XLSX):", df["concurso"].nunique())
-            st.write("Menor concurso:", int(df["concurso"].min()))
-            st.write("Maior concurso:", int(df["concurso"].max()))
-
-            if st.button("Sobrescrever historicomegasena.csv com XLSX limpo"):
-                df_to_save = df.rename(
-                    columns={
-                        "Bola1": "d1",
-                        "Bola2": "d2",
-                        "Bola3": "d3",
-                        "Bola4": "d4",
-                        "Bola5": "d5",
-                        "Bola6": "d6",
-                    }
-                )
-                df_to_save[["d1", "d2", "d3", "d4", "d5", "d6"]] = np.sort(
-                    df_to_save[["d1", "d2", "d3", "d4", "d5", "d6"]].values, axis=1
-                )
-                df_to_save = df_to_save.sort_values(["concurso", "data"]).drop_duplicates(subset=["concurso"], keep="last")
-                df_to_save = df_to_save.sort_values("concurso").reset_index(drop=True)
-
-                _atomic_write_csv(df_to_save, csv_path, sep=";")
-                st.success(f"Salvo {len(df_to_save)} linhas em {csv_path}")
-                st.cache_data.clear()
-                st.rerun()
-
-    st.markdown("### 2. Ler CSV gerado pelo app")
-    abs_path = os.path.abspath(csv_path)
-    st.write("DEBUG caminho CSV:", abs_path)
-    if os.path.exists(abs_path):
-        df_csv = pd.read_csv(abs_path, sep=";")
-        st.write("DEBUG CSV shape:", df_csv.shape)
-        st.dataframe(df_csv.tail(20), use_container_width=True)
-    else:
-        st.info("CSV ainda não existe. Use 'Baixar e atualizar Mega-Sena - Caixa' ou envie um XLSX acima.")
+        st.subheader("Últimos resultados")
+        qtd = st.slider("Quantidade", min_value=5, max_value=50, value=10, step=5)
+        ult = df_concursos.sort_values("concurso", ascending=False).head(qtd)
+        st.dataframe(ult.sort_values("concurso", ascending=True), use_container_width=True)
