@@ -1272,6 +1272,8 @@ elif pagina == "Análises estatísticas":
         
 elif pagina == "Debug Mega":
     st.title("Debug Mega-Sena")
+    csv_path = "historicomegasena.csv"  # defina aqui (fora de ifs)
+
 
     st.markdown("### 1. Ler XLSX manualmente (arquivo anexado ou baixado)")
     uploaded = st.file_uploader("Envie o arquivo Mega-Sena.xlsx", type=["xlsx"])
@@ -1318,8 +1320,13 @@ elif pagina == "Debug Mega":
                     "Bola1": "d1", "Bola2": "d2", "Bola3": "d3",
                     "Bola4": "d4", "Bola5": "d5", "Bola6": "d6",
                 })
+            
                 df_to_save.to_csv(csv_path, sep=";", index=False)
                 st.success(f"Salvo {len(df_to_save)} linhas em {csv_path}")
+            
+                st.cache_data.clear()
+                st.rerun()
+
 
 
 
