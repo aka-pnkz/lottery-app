@@ -1171,7 +1171,7 @@ if pagina == "Gerar jogos":
 # PÁGINA ANÁLISES
 # ==========================
 
-else:
+elif pagina == "Análises estatísticas":
     st.title(f"Análises estatísticas da {modalidade}")
     st.caption("As análises são descritivas e não garantem aumento de chance em sorteios futuros.")
 
