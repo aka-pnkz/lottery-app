@@ -96,7 +96,6 @@ URL_MEGA_DOWNLOAD = (
 # ==========================
 
 
-@st.cache_data
 def carregar_concursos(caminho_csv: str, n_dezenas: int) -> pd.DataFrame:
     cols = ["concurso", "data"] + [f"d{i}" for i in range(1, n_dezenas + 1)]
     df = pd.read_csv(caminho_csv, sep=";")
@@ -123,7 +122,6 @@ def carregar_concursos(caminho_csv: str, n_dezenas: int) -> pd.DataFrame:
     return df  # [file:1]
 
 
-@st.cache_data
 def calcular_frequencias(df: pd.DataFrame, n_dezenas: int) -> pd.DataFrame:
     dezenas_cols = [f"d{i}" for i in range(1, n_dezenas + 1)]
     todas = df[dezenas_cols].values.ravel()
@@ -192,13 +190,11 @@ def atualizar_base_lotofacil(buf_xlsx: BytesIO) -> None:
 def atualizar_base_megasena(buf_xlsx: BytesIO) -> None:
     df_raw = pd.read_excel(buf_xlsx)
 
-    # coluna de concurso
     possiveis_conc = [c for c in df_raw.columns if isinstance(c, str) and "concurso" in c.lower()]
     if not possiveis_conc:
         raise RuntimeError("Não foi encontrada coluna de concurso na planilha da Mega-Sena.")
     col_concurso = possiveis_conc[0]
 
-    # coluna de data (data + sorteio)
     possiveis_datas = [
         c for c in df_raw.columns
         if isinstance(c, str)
@@ -211,7 +207,6 @@ def atualizar_base_megasena(buf_xlsx: BytesIO) -> None:
         raise RuntimeError("Não foi encontrada coluna de data na planilha da Mega-Sena.")
     col_data = possiveis_datas[0]
 
-    # colunas das bolas
     col_bolas: list[str] = []
     for c in df_raw.columns:
         if not isinstance(c, str):
@@ -461,7 +456,6 @@ def simular_premios(jogos: list[list[int]], dezenas_sorteadas: list[int]) -> pd.
     return pd.DataFrame(linhas)  # [file:1]
 
 
-@st.cache_data
 def calcular_atraso(freq_df: pd.DataFrame, df_concursos: pd.DataFrame, n_dezenas: int) -> pd.DataFrame:
     dezenas_cols = [f"d{i}" for i in range(1, n_dezenas + 1)]
     ultimo_concurso: dict[int, int] = {}
@@ -487,7 +481,6 @@ def calcular_atraso(freq_df: pd.DataFrame, df_concursos: pd.DataFrame, n_dezenas
     return pd.DataFrame(atraso_list)  # [file:1]
 
 
-@st.cache_data
 def calcular_padroes_par_impar_baixa_alta(
     df_concursos: pd.DataFrame,
     n_dezenas: int,
@@ -527,7 +520,6 @@ def calcular_padroes_par_impar_baixa_alta(
     return df_padroes, dist_par_impar, dist_baixa_alta  # [file:1]
 
 
-@st.cache_data
 def calcular_somas(df_concursos: pd.DataFrame, n_dezenas: int) -> tuple[pd.DataFrame, pd.DataFrame]:
     dezenas_cols = [f"d{i}" for i in range(1, n_dezenas + 1)]
     df = df_concursos.copy()
@@ -820,7 +812,6 @@ if pagina == "Gerar jogos":
     jogos: list[list[int]] = st.session_state["jogos"]
     jogos_info: list[dict] = st.session_state["jogos_info"]
 
-    # geração simples
     if modo_geracao == "Uma estratégia" and gerar and "estrategia" in locals():
         if estrategia == "Aleatório puro":
             jogos = gerar_aleatorio_puro(int(qtd_jogos), tam_jogo, N_UNIVERSO)
@@ -852,7 +843,6 @@ if pagina == "Gerar jogos":
         jogos = [j for j in jogos if len(j) >= N_MIN]
         jogos_info = [{"estrategia": estrategia, "jogo": j} for j in jogos]
 
-    # geração mista
     if modo_geracao == "Misto de estratégias" and gerar_misto:
         jogos = []
         jogos_info = []
