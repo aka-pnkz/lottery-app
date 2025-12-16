@@ -193,9 +193,6 @@ def atualizar_base_lotofacil(buf_xlsx: BytesIO) -> None:
 def atualizar_base_megasena(buf_xlsx: BytesIO) -> None:
     df_raw = pd.read_excel(buf_xlsx)
 
-    # DEBUG 1: logo após ler o XLSX
-    st.write("Mega XLSX – linhas totais:", len(df_raw))
-
     cols = [
         "Concurso", "Data do Sorteio",
         "Bola1", "Bola2", "Bola3", "Bola4", "Bola5", "Bola6",
@@ -223,12 +220,7 @@ def atualizar_base_megasena(buf_xlsx: BytesIO) -> None:
     df[dezenas] = np.sort(df[dezenas].values, axis=1)
     df = df.sort_values("concurso")
 
-    # DEBUG 2: depois da limpeza e antes de salvar o CSV
-    st.write("Mega após limpeza – concursos únicos:", df["concurso"].nunique())
-    st.write("Mega após limpeza – maior concurso:", df["concurso"].max())
-
-    df.to_csv("historicomegasena.csv", sep=";", index=False)
-
+    df.to_csv("historicomegasena.csv", sep=";", index=False)  # [file:1]
 
 
 def _remover_arquivo_se_existir(path: str) -> None:
@@ -588,7 +580,7 @@ with st.sidebar:
             try:
                 atualizar_base_lotofacil_automatico()
                 st.success("Base da Lotofácil baixada da Caixa e atualizada.")
-                #st.rerun()
+                st.rerun()
             except Exception as e:
                 st.error(f"Erro ao baixar/atualizar Lotofácil: {e}")
     else:
@@ -799,7 +791,6 @@ if pagina == "Gerar jogos":
     jogos: list[list[int]] = st.session_state["jogos"]
     jogos_info: list[dict] = st.session_state["jogos_info"]
 
-    # geração simples
     if modo_geracao == "Uma estratégia" and gerar and "estrategia" in locals():
         if estrategia == "Aleatório puro":
             jogos = gerar_aleatorio_puro(int(qtd_jogos), tam_jogo, N_UNIVERSO)
@@ -831,7 +822,6 @@ if pagina == "Gerar jogos":
         jogos = [j for j in jogos if len(j) >= N_MIN]
         jogos_info = [{"estrategia": estrategia, "jogo": j} for j in jogos]
 
-    # geração mista
     if modo_geracao == "Misto de estratégias" and gerar_misto:
         jogos = []
         jogos_info = []
@@ -868,7 +858,6 @@ if pagina == "Gerar jogos":
                 n_universo=N_UNIVERSO,
                 limite_sequencia=mix_limite_seq,
             )
-
             jogos.extend(js)
             jogos_info.extend({"estrategia": "Sem sequências longas", "jogo": j} for j in js)
 
