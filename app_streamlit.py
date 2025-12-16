@@ -230,6 +230,7 @@ def atualizar_base_megasena(buf_xlsx: BytesIO) -> None:
     df.to_csv("historicomegasena.csv", sep=";", index=False)
 
 
+
 def _remover_arquivo_se_existir(path: str) -> None:
     if os.path.exists(path):
         os.remove(path)  # [web:42]
