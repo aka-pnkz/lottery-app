@@ -663,7 +663,8 @@ if pagina == "Gerar jogos":
     col1, col2 = st.columns(2)
     with col1:
         st.markdown("### Resumo do histórico")
-        st.write("DEBUG df_concursos shape:", df_concursos.shape)
+        st.write("DEBUG antes de tudo:", df_concursos.shape)
+        st.write("DEBUG concursos min/max:", df_concursos["concurso"].min(), df_concursos["concurso"].max())
         st.metric("Total de concursos", len(df_concursos))
         st.caption(
             f"De {df_concursos['data'].min().date()} "
