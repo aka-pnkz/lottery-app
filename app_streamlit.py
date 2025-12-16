@@ -1,4 +1,5 @@
 import math
+import os
 from datetime import datetime
 from io import BytesIO
 
@@ -106,7 +107,6 @@ def carregar_concursos(caminho_csv: str, n_dezenas: int) -> pd.DataFrame:
     df["data"] = pd.to_datetime(df["data"], dayfirst=True, errors="coerce")
     df = df.dropna(subset=["concurso", "data"])
 
-    # datas plausíveis: de 1996 até hoje
     hoje = pd.Timestamp.today().normalize()
     df = df[(df["data"] >= "1996-01-01") & (df["data"] <= hoje)]
 
@@ -229,12 +229,19 @@ def atualizar_base_megasena(buf_xlsx: BytesIO) -> None:
     df.to_csv("historicomegasena.csv", sep=";", index=False)  # [file:1]
 
 
+def _remover_arquivo_se_existir(path: str) -> None:
+    if os.path.exists(path):
+        os.remove(path)  # [web:42]
+
+
 def atualizar_base_lotofacil_automatico() -> None:
+    _remover_arquivo_se_existir("historicolotofacil.csv")
     buf = baixar_xlsx_lotofacil()
     atualizar_base_lotofacil(buf)
 
 
 def atualizar_base_megasena_automatico() -> None:
+    _remover_arquivo_se_existir("historicomegasena.csv")
     buf = baixar_xlsx_megasena()
     atualizar_base_megasena(buf)
 
@@ -593,6 +600,14 @@ with st.sidebar:
                 st.rerun()
             except Exception as e:
                 st.error(f"Erro ao baixar/atualizar Mega-Sena: {e}")
+
+    st.markdown("### Manutenção das bases")
+    if st.button("Apagar CSVs locais (reset histórico)"):
+        _remover_arquivo_se_existir("historicomegasena.csv")
+        _remover_arquivo_se_existir("historicolotofacil.csv")
+        st.success("Arquivos CSV locais removidos. Baixe e atualize novamente as bases.")
+        st.session_state.clear()
+        st.rerun()
 
     orcamento_max = st.number_input(
         "Orçamento máximo (opcional)",
