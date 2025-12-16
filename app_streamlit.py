@@ -102,6 +102,7 @@ def carregar_concursos(caminho_csv: str, n_dezenas: int) -> pd.DataFrame:
     df = df[cols]
     df["concurso"] = df["concurso"].astype(int)
     df["data"] = pd.to_datetime(df["data"], dayfirst=True, errors="coerce")
+    df = df.dropna(subset=["data"])
     for c in [f"d{i}" for i in range(1, n_dezenas + 1)]:
         df[c] = df[c].astype(int)
     return df  # [file:1]
@@ -119,17 +120,23 @@ def calcular_frequencias(df: pd.DataFrame, n_dezenas: int) -> pd.DataFrame:
 
 
 def baixar_xlsx_lotofacil() -> BytesIO:
-    # Lotofácil: XLSX direto
     resp = requests.get(URL_LOTOFACIL_DOWNLOAD, timeout=30)
     resp.raise_for_status()
     return BytesIO(resp.content)  # [web:21]
 
 
 def baixar_xlsx_megasena() -> BytesIO:
-    # Mega-Sena: XLSX direto
     resp = requests.get(URL_MEGA_DOWNLOAD, timeout=30)
     resp.raise_for_status()
     return BytesIO(resp.content)  # [web:21]
+
+
+def _limpar_concurso_data(df: pd.DataFrame) -> pd.DataFrame:
+    df["concurso"] = pd.to_numeric(df["concurso"], errors="coerce")
+    df["data"] = pd.to_datetime(df["data"], dayfirst=True, errors="coerce")
+    df = df.dropna(subset=["concurso", "data"])
+    df["concurso"] = df["concurso"].astype(int)
+    return df  # [file:1]
 
 
 def atualizar_base_lotofacil(buf_xlsx: BytesIO) -> None:
@@ -150,16 +157,18 @@ def atualizar_base_lotofacil(buf_xlsx: BytesIO) -> None:
         rename_map[f"Bola{i}"] = f"d{i}"
     df.rename(columns=rename_map, inplace=True)
 
-    df["concurso"] = df["concurso"].astype(int)
-    df["data"] = pd.to_datetime(df["data"], dayfirst=True, errors="coerce")
+    df = _limpar_concurso_data(df)
 
     for i in range(1, 16):
-        df[f"d{i}"] = df[f"d{i}"].astype(int)
-
+        df[f"d{i}"] = pd.to_numeric(df[f"d{i}"], errors="coerce")
     dezenas_cols = [f"d{i}" for i in range(1, 16)]
-    df[dezenas_cols] = np.sort(df[dezenas_cols].values, axis=1)
+    df = df.dropna(subset=dezenas_cols)
+    for c in dezenas_cols:
+        df[c] = df[c].astype(int)
 
+    df[dezenas_cols] = np.sort(df[dezenas_cols].values, axis=1)
     df = df.sort_values("concurso")
+
     df.to_csv("historicolotofacil.csv", sep=";", index=False)  # [file:1]
 
 
@@ -188,16 +197,18 @@ def atualizar_base_megasena(buf_xlsx: BytesIO) -> None:
     }
     df.rename(columns=rename_map, inplace=True)
 
-    df["concurso"] = df["concurso"].astype(int)
-    df["data"] = pd.to_datetime(df["data"], dayfirst=True, errors="coerce")
+    df = _limpar_concurso_data(df)
 
     for i in range(1, 7):
-        df[f"d{i}"] = df[f"d{i}"].astype(int)
-
+        df[f"d{i}"] = pd.to_numeric(df[f"d{i}"], errors="coerce")
     dezenas_cols = [f"d{i}" for i in range(1, 7)]
-    df[dezenas_cols] = np.sort(df[dezenas_cols].values, axis=1)
+    df = df.dropna(subset=dezenas_cols)
+    for c in dezenas_cols:
+        df[c] = df[c].astype(int)
 
+    df[dezenas_cols] = np.sort(df[dezenas_cols].values, axis=1)
     df = df.sort_values("concurso")
+
     df.to_csv("historicomegasena.csv", sep=";", index=False)  # [file:1]
 
 
