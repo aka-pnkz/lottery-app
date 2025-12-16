@@ -547,7 +547,8 @@ with st.sidebar:
         COMB_TARGET = math.comb(25, 15)
         LIMITE_BAIXO = 13
 
-    pagina = st.radio("Navegação", ["Gerar jogos", "Análises estatísticas"])
+    pagina = st.radio("Navegação", ["Gerar jogos", "Análises estatísticas", "Debug Mega"])
+
 
     st.markdown("### Filtros avançados (opcional)")
     with st.expander("Restrições sobre os jogos gerados", expanded=False):
@@ -1266,3 +1267,55 @@ else:
             ultimos.sort_values("concurso", ascending=True),
             use_container_width=True,
         )
+        
+elif pagina == "Debug Mega":
+    st.title("Debug Mega-Sena")
+
+    st.markdown("### 1. Ler XLSX manualmente (arquivo anexado ou baixado)")
+    uploaded = st.file_uploader("Envie o arquivo Mega-Sena.xlsx", type=["xlsx"])
+    if uploaded is not None:
+        df_raw = pd.read_excel(uploaded)
+        st.write("Colunas XLSX:", list(df_raw.columns))
+        st.write("Total linhas XLSX:", len(df_raw))
+
+        cols = [
+            "Concurso", "Data do Sorteio",
+            "Bola1", "Bola2", "Bola3", "Bola4", "Bola5", "Bola6",
+        ]
+        falta = [c for c in cols if c not in df_raw.columns]
+        if falta:
+            st.error(f"Colunas faltando no XLSX: {falta}")
+        else:
+            df = df_raw[cols].copy()
+            df.rename(
+                columns={"Concurso": "concurso", "Data do Sorteio": "data"},
+                inplace=True,
+            )
+
+            df["concurso"] = pd.to_numeric(df["concurso"], errors="coerce")
+            df["data"] = pd.to_datetime(df["data"], dayfirst=True, errors="coerce")
+            df = df.dropna(subset=["concurso", "data"])
+            hoje = pd.Timestamp.today().normalize()
+            df = df[(df["data"] >= "1996-01-01") & (df["data"] <= hoje)]
+            df["concurso"] = df["concurso"].astype(int)
+
+            dezenas_cols = [f"Bola{i}" for i in range(1, 7)]
+            for c in dezenas_cols:
+                df[c] = pd.to_numeric(df[c], errors="coerce")
+            df = df.dropna(subset=dezenas_cols)
+            for c in dezenas_cols:
+                df[c] = df[c].astype(int)
+
+            st.write("Concursos únicos após limpeza (XLSX):", df["concurso"].nunique())
+            st.write("Menor concurso:", int(df["concurso"].min()))
+            st.write("Maior concurso:", int(df["concurso"].max()))
+
+    st.markdown("### 2. Ler CSV gerado pelo app")
+    if os.path.exists("historicomegasena.csv"):
+        df_csv = pd.read_csv("historicomegasena.csv", sep=";")
+        st.write("Linhas no CSV (incl. cabeçalho):", len(df_csv))
+        st.write("Concursos únicos no CSV:", df_csv["concurso"].nunique())
+        st.write("Menor concurso CSV:", int(df_csv["concurso"].min()))
+        st.write("Maior concurso CSV:", int(df_csv["concurso"].max()))
+    else:
+        st.info("Arquivo historicomegasena.csv ainda não existe. Clique primeiro em 'Baixar e atualizar Mega-Sena - Caixa' na barra lateral.")
