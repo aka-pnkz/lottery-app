@@ -549,6 +549,11 @@ with st.sidebar:
 
     pagina = st.radio("Navegação", ["Gerar jogos", "Análises estatísticas", "Debug Mega"])
 
+    if st.button("Limpar cache (debug)"):
+        st.cache_data.clear()
+        st.rerun()
+
+
 
     st.markdown("### Filtros avançados (opcional)")
     with st.expander("Restrições sobre os jogos gerados", expanded=False):
@@ -589,9 +594,11 @@ with st.sidebar:
             try:
                 atualizar_base_megasena_automatico()
                 st.success("Base da Mega-Sena baixada da Caixa e atualizada.")
+                st.cache_data.clear()
                 st.rerun()
             except Exception as e:
                 st.error(f"Erro ao baixar/atualizar Mega-Sena: {e}")
+
 
     st.markdown("### Manutenção das bases")
     if st.button("Apagar CSVs locais (reset histórico)"):
