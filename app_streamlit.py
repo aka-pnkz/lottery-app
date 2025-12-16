@@ -1,4 +1,3 @@
-import itertools
 import math
 from datetime import datetime
 from io import BytesIO
@@ -78,11 +77,11 @@ def inject_global_css() -> None:
 
 inject_global_css()
 
-# preços oficiais atuais da aposta mínima (2025) [web:481][web:489]
+# preços oficiais atuais da aposta mínima (2025) [web:21][file:1]
 PRECO_BASE_MEGA = 6.00
 PRECO_BASE_LOTO = 3.50
 
-# endpoints oficiais de download ZIP [web:496][web:521]
+# endpoints oficiais de download de resultados [web:21]
 URL_LOTOFACIL_DOWNLOAD = (
     "https://servicebus2.caixa.gov.br/portaldeloterias/api/resultados/download"
     "?modalidade=Lotof%C3%A1cil"
@@ -93,7 +92,7 @@ URL_MEGA_DOWNLOAD = (
 )
 
 # ==========================
-# FUNÇÕES BÁSICAS / ETL
+# ETL / HISTÓRICO
 # ==========================
 
 
@@ -120,35 +119,29 @@ def calcular_frequencias(df: pd.DataFrame, n_dezenas: int) -> pd.DataFrame:
     return freq_df  # [file:1]
 
 
-def _baixar_zip(url: str) -> BytesIO:
-    resp = requests.get(url, timeout=30)
-    resp.raise_for_status()
-    return BytesIO(resp.content)
-
-
 def baixar_xlsx_lotofacil() -> BytesIO:
-    buf_zip = _baixar_zip(URL_LOTOFACIL_DOWNLOAD)
+    resp = requests.get(URL_LOTOFACIL_DOWNLOAD, timeout=30)
+    resp.raise_for_status()
+    buf_zip = BytesIO(resp.content)
     with zipfile.ZipFile(buf_zip) as z:
         for name in z.namelist():
             if name.lower().endswith((".xlsx", ".xls")):
                 return BytesIO(z.read(name))
-    raise RuntimeError("Nenhum arquivo XLS/XLSX encontrado no ZIP da Caixa para Lotofácil.")
+    raise RuntimeError("Nenhum arquivo XLS/XLSX encontrado no ZIP da Caixa para Lotofácil.")  # [file:1]
 
 
 def baixar_xlsx_megasena() -> BytesIO:
-    buf_zip = _baixar_zip(URL_MEGA_DOWNLOAD)
-    with zipfile.ZipFile(buf_zip) as z:
-        for name in z.namelist():
-            if name.lower().endswith((".xlsx", ".xls")):
-                return BytesIO(z.read(name))
-    raise RuntimeError("Nenhum arquivo XLS/XLSX encontrado no ZIP da Caixa para Mega-Sena.")
+    # Mega-Sena vem como XLSX direto, não ZIP [web:21]
+    resp = requests.get(URL_MEGA_DOWNLOAD, timeout=30)
+    resp.raise_for_status()
+    return BytesIO(resp.content)
 
 
 def atualizar_base_lotofacil(buf_xlsx: BytesIO) -> None:
     df_raw = pd.read_excel(buf_xlsx)
 
     col_concurso = "Concurso"
-    col_data = "Data Sorteio"  # cabeçalho oficial da planilha que você mandou
+    col_data = "Data Sorteio"
     col_bolas = [f"Bola{i}" for i in range(1, 16)]
 
     for c in [col_concurso, col_data] + col_bolas:
@@ -173,11 +166,6 @@ def atualizar_base_lotofacil(buf_xlsx: BytesIO) -> None:
 
     df = df.sort_values("concurso")
     df.to_csv("historicolotofacil.csv", sep=";", index=False)  # [file:1]
-
-
-def atualizar_base_lotofacil_automatico() -> None:
-    buf = baixar_xlsx_lotofacil()
-    atualizar_base_lotofacil(buf)
 
 
 def atualizar_base_megasena(buf_xlsx: BytesIO) -> None:
@@ -218,13 +206,18 @@ def atualizar_base_megasena(buf_xlsx: BytesIO) -> None:
     df.to_csv("historicomegasena.csv", sep=";", index=False)  # [file:1]
 
 
+def atualizar_base_lotofacil_automatico() -> None:
+    buf = baixar_xlsx_lotofacil()
+    atualizar_base_lotofacil(buf)
+
+
 def atualizar_base_megasena_automatico() -> None:
     buf = baixar_xlsx_megasena()
     atualizar_base_megasena(buf)
 
 # ==========================
-# FUNÇÕES DE JOGO / ANÁLISE
-# (mesmas do seu app atual)
+# FUNÇÕES DE JOGOS / ANÁLISE
+# (baseadas no seu código)
 # ==========================
 
 
@@ -415,30 +408,19 @@ def simular_premios(jogos: list[list[int]], dezenas_sorteadas: list[int]) -> pd.
     linhas = []
     for i, jogo in enumerate(jogos, start=1):
         acertos = len(set(jogo) & dezenas_s)
-        linhas.append(
-            {
-                "jogo_id": i,
-                "jogo": formatar_jogo(jogo),
-                "acertos": acertos,
-            }
-        )
-    df = pd.DataFrame(linhas)
-    return df  # [file:1]
+        linhas.append({"jogo_id": i, "jogo": formatar_jogo(jogo), "acertos": acertos})
+    return pd.DataFrame(linhas)  # [file:1]
 
 
 @st.cache_data
 def calcular_atraso(freq_df: pd.DataFrame, df_concursos: pd.DataFrame, n_dezenas: int) -> pd.DataFrame:
     dezenas_cols = [f"d{i}" for i in range(1, n_dezenas + 1)]
     ultimo_concurso: dict[int, int] = {}
-
     for _, row in df_concursos[["concurso"] + dezenas_cols].iterrows():
         conc = int(row["concurso"])
         for d in row[dezenas_cols]:
-            d = int(d)
-            ultimo_concurso[d] = conc
-
+            ultimo_concurso[int(d)] = conc
     max_concurso = int(df_concursos["concurso"].max())
-
     atraso_list = []
     for dezena in range(1, int(freq_df["dezena"].max()) + 1):
         freq_row = freq_df.loc[freq_df["dezena"] == dezena]
@@ -453,9 +435,7 @@ def calcular_atraso(freq_df: pd.DataFrame, df_concursos: pd.DataFrame, n_dezenas
                 "atraso_atual": atraso,
             }
         )
-
-    atraso_df = pd.DataFrame(atraso_list)
-    return atraso_df  # [file:1]
+    return pd.DataFrame(atraso_list)  # [file:1]
 
 
 @st.cache_data
@@ -466,7 +446,6 @@ def calcular_padroes_par_impar_baixa_alta(
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     dezenas_cols = [f"d{i}" for i in range(1, n_dezenas + 1)]
     registros = []
-
     for _, row in df_concursos[["concurso"] + dezenas_cols].iterrows():
         dezenas = [int(row[c]) for c in dezenas_cols]
         pares = sum(1 for d in dezenas if d % 2 == 0)
@@ -481,9 +460,7 @@ def calcular_padroes_par_impar_baixa_alta(
                 "altos": altos,
             }
         )
-
     df_padroes = pd.DataFrame(registros)
-
     dist_par_impar = (
         df_padroes.groupby(["pares", "impares"])
         .size()
@@ -491,7 +468,6 @@ def calcular_padroes_par_impar_baixa_alta(
         .sort_values("qtd", ascending=False)
         .reset_index(drop=True)
     )
-
     dist_baixa_alta = (
         df_padroes.groupby(["baixos", "altos"])
         .size()
@@ -499,7 +475,6 @@ def calcular_padroes_par_impar_baixa_alta(
         .sort_values("qtd", ascending=False)
         .reset_index(drop=True)
     )
-
     return df_padroes, dist_par_impar, dist_baixa_alta  # [file:1]
 
 
@@ -508,11 +483,9 @@ def calcular_somas(df_concursos: pd.DataFrame, n_dezenas: int) -> tuple[pd.DataF
     dezenas_cols = [f"d{i}" for i in range(1, n_dezenas + 1)]
     df = df_concursos.copy()
     df["soma"] = df[dezenas_cols].sum(axis=1)
-
     bins = [0, 150, 200, 250, 300, 350, 500]
     labels = ["0-150", "151-200", "201-250", "251-300", "301-350", "351-500"]
     df["faixa_soma"] = pd.cut(df["soma"], bins=bins, labels=labels, right=True)
-
     dist_faixas = (
         df["faixa_soma"]
         .value_counts(dropna=False)
@@ -520,12 +493,10 @@ def calcular_somas(df_concursos: pd.DataFrame, n_dezenas: int) -> tuple[pd.DataF
         .reset_index()
         .rename(columns={"index": "faixa_soma", "faixa_soma": "qtd"})
     )
-
     return df[["concurso", "soma", "faixa_soma"]], dist_faixas  # [file:1]
 
 # ==========================
-# UI / LÓGICA PRINCIPAL
-# (sidebar, geração, análises)
+# SIDEBAR
 # ==========================
 
 with st.sidebar:
@@ -561,12 +532,10 @@ with st.sidebar:
     st.markdown("### Filtros avançados (opcional)")
     with st.expander("Restrições sobre os jogos gerados", expanded=False):
         dezenas_fixas_txt = st.text_input(
-            "Dezenas fixas (sempre incluir)",
-            placeholder="Ex: 10, 11, 12",
+            "Dezenas fixas (sempre incluir)", placeholder="Ex: 10, 11, 12"
         )
         dezenas_proibidas_txt = st.text_input(
-            "Dezenas proibidas (nunca incluir)",
-            placeholder="Ex: 1, 2, 3",
+            "Dezenas proibidas (nunca incluir)", placeholder="Ex: 1, 2, 3"
         )
         soma_min = st.number_input("Soma mínima (opcional)", min_value=0, max_value=600, value=0)
         soma_max = st.number_input("Soma máxima (opcional)", min_value=0, max_value=600, value=0)
@@ -611,7 +580,10 @@ with st.sidebar:
         step=10.0,
     )
 
-# carregar histórico
+# ==========================
+# CARREGAR HISTÓRICO
+# ==========================
+
 try:
     df_concursos = carregar_concursos(CSVPATH, N_DEZENAS_HIST)
     freq_df = calcular_frequencias(df_concursos, N_DEZENAS_HIST)
@@ -628,9 +600,7 @@ except Exception as e:
 DEZENAS_ULTIMO_CONCURSO: set[int] = set()
 if not df_concursos.empty:
     last = df_concursos.sort_values("concurso").iloc[-1]
-    DEZENAS_ULTIMO_CONCURSO = {
-        int(last[f"d{i}"]) for i in range(1, N_DEZENAS_HIST + 1)
-    }
+    DEZENAS_ULTIMO_CONCURSO = {int(last[f"d{i}"]) for i in range(1, N_DEZENAS_HIST + 1)}
 
 if "jogos" not in st.session_state:
     st.session_state["jogos"] = []
@@ -639,13 +609,13 @@ if "jogos_info" not in st.session_state:
 
 explicacoes = {
     "Aleatório puro": "Sorteia dezenas totalmente aleatórias dentro do universo da loteria.",
-    "Balanceado par/ímpar": "Evita só pares ou só ímpares, mantendo alguma mistura.",
+    "Balanceado par/ímpar": "Tenta evitar all-in em pares ou ímpares, mantendo alguma mistura.",
     "Quentes/Frias/Mix": "Combina dezenas mais sorteadas, menos sorteadas e neutras.",
     "Sem sequências longas": "Evita jogos com muitas dezenas consecutivas.",
 }  # [file:1]
 
 # ==========================
-# PÁGINAS
+# PÁGINA GERAR JOGOS
 # ==========================
 
 if pagina == "Gerar jogos":
@@ -674,7 +644,6 @@ if pagina == "Gerar jogos":
         st.write(f"- Loteria: **{modalidade}**")
         st.write(f"- Universo: 1–{N_UNIVERSO}")
         st.write(f"- Valor aposta base: R$ {preco_base:,.2f}".replace(".", ","))
-
         if dezenas_fixas:
             st.write(f"- Dezenas fixas: {sorted(dezenas_fixas)}")
         if dezenas_proibidas:
@@ -874,10 +843,7 @@ if pagina == "Gerar jogos":
             soma_max=soma_max_val,
         )
         jogos_filtrados = [j for j in jogos_filtrados if len(j) >= N_MIN]
-
-        novo_info = [
-            info for info in jogos_info if info["jogo"] in jogos_filtrados
-        ]
+        novo_info = [info for info in jogos_info if info["jogo"] in jogos_filtrados]
         jogos = [info["jogo"] for info in novo_info]
         jogos_info = novo_info
 
@@ -996,18 +962,11 @@ if pagina == "Gerar jogos":
             jogos_df = pd.DataFrame(dados)
 
             def highlight_extreme(row):
-                color = [""] * len(row)
                 if row.get("padrao_extremo", False):
-                    color = ["background-color: #fee2e2"] * len(row)
-                return color
+                    return ["background-color: #fee2e2"] * len(row)
+                return [""] * len(row)
 
-            def color_score(val):
-                return ""
-
-            styled = (
-                jogos_df.style.apply(highlight_extreme, axis=1)
-            )
-
+            styled = jogos_df.style.apply(highlight_extreme, axis=1)
             st.dataframe(styled, use_container_width=True)
 
             csv_data = jogos_df.to_csv(index=False).encode("utf-8")
@@ -1154,7 +1113,7 @@ if pagina == "Gerar jogos":
                 placeholder = (
                     "Ex: 05, 12, 23, 34, 45, 60"
                     if modalidade == "Mega-Sena"
-                    else "Ex: 01, 02, 03, ..., 15"
+                    else "Ex: 01, 02, 03, ..., 25"
                 )
                 resultado_manual = st.text_input(
                     f"Informe {N_DEZENAS_HIST} dezenas separadas por vírgula ou espaço",
@@ -1181,9 +1140,13 @@ if pagina == "Gerar jogos":
             else:
                 st.info("Informe dezenas sorteadas para simular acertos.")
 
+# ==========================
+# PÁGINA ANÁLISES
+# ==========================
+
 else:
     st.title(f"Análises estatísticas da {modalidade}")
-    st.caption("Análises descritivas, não garantem aumento de chance em sorteios futuros.")
+    st.caption("As análises são descritivas e não garantem aumento de chance em sorteios futuros.")
 
     limite_baixo = 30 if modalidade == "Mega-Sena" else 13
 
@@ -1204,7 +1167,8 @@ else:
         with col2:
             st.markdown("Ordenado por atraso atual")
             st.dataframe(
-                atraso_df.sort_values(["atraso_atual", "frequencia"], ascending=[False, False]).reset_index(drop=True),
+                atraso_df.sort_values(["atraso_atual", "frequencia"], ascending=[False, False])
+                .reset_index(drop=True),
                 use_container_width=True,
             )
 
