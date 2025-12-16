@@ -1318,13 +1318,18 @@ elif pagina == "Debug Mega":
                     "Bola1": "d1", "Bola2": "d2", "Bola3": "d3",
                     "Bola4": "d4", "Bola5": "d5", "Bola6": "d6",
                 })
-                df_to_save.to_csv("historicomegasena.csv", sep=";", index=False)
-                st.success(f"Salvo {len(df_to_save)} linhas em historicomegasena.csv")
+                df_to_save.to_csv(csv_path, sep=";", index=False)
+                st.success(f"Salvo {len(df_to_save)} linhas em {csv_path}")
+
 
 
 
     st.markdown("### 2. Ler CSV gerado pelo app")
-    if os.path.exists("historicomegasena.csv"):
-        df_csv = pd.read_csv("historicomegasena.csv", sep=";")
+    csv_path = os.path.abspath("historicomegasena.csv")
+    st.write("DEBUG caminho CSV:", csv_path)
+    
+    if os.path.exists(csv_path):
+        df_csv = pd.read_csv(csv_path, sep=";")
         st.write("DEBUG CSV shape:", df_csv.shape)
+
 
