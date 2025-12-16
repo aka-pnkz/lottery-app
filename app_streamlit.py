@@ -217,7 +217,6 @@ def atualizar_base_megasena_automatico() -> None:
 
 # ==========================
 # FUNÇÕES DE JOGOS / ANÁLISE
-# (baseadas no seu código)
 # ==========================
 
 
@@ -560,7 +559,7 @@ with st.sidebar:
             try:
                 atualizar_base_lotofacil_automatico()
                 st.success("Base da Lotofácil baixada da Caixa e atualizada.")
-                st.experimental_rerun()
+                st.rerun()
             except Exception as e:
                 st.error(f"Erro ao baixar/atualizar Lotofácil: {e}")
     else:
@@ -568,7 +567,7 @@ with st.sidebar:
             try:
                 atualizar_base_megasena_automatico()
                 st.success("Base da Mega-Sena baixada da Caixa e atualizada.")
-                st.experimental_rerun()
+                st.rerun()
             except Exception as e:
                 st.error(f"Erro ao baixar/atualizar Mega-Sena: {e}")
 
